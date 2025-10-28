@@ -24,7 +24,7 @@ class CardAnalyzer:
                 return False
             self.gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
             return True
-        except Exception as e:
+        except (cv2.error, FileNotFoundError, PermissionError) as e:
             print(f"Error loading image: {e}")
             return False
     

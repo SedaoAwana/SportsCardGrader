@@ -7,7 +7,10 @@ import sys
 import os
 
 # Add the package to Python path
-sys.path.insert(0, '/home/runner/work/SportsCardGrader/SportsCardGrader')
+import os
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, current_dir)
 
 from sports_card_grader import CardAnalyzer, GradingSystem
 

@@ -7,9 +7,9 @@ setup(
     author="Sports Card Grader Team",
     packages=find_packages(),
     install_requires=[
-        "opencv-python==4.8.1.78",
-        "numpy==1.24.3",
-        "pillow==10.0.1",
+        "opencv-python>=4.5.0",
+        "numpy>=1.21.0",
+        "pillow>=8.0.0",
     ],
     entry_points={
         "console_scripts": [

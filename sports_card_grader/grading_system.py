@@ -163,29 +163,33 @@ class GradingSystem:
         suggestions = []
         
         # Get PSA standards for the current grade
+        if not grade.isdigit() or not (1 <= int(grade) <= 10):
+            return suggestions
+            
         current_grade_info = self.GRADE_SCALE.get(grade, {})
-        next_grade = str(min(10, int(grade) + 1)) if grade.isdigit() and int(grade) < 10 else None
+        current_grade_num = int(grade)
+        next_grade = str(min(10, current_grade_num + 1)) if current_grade_num < 10 else None
         next_grade_info = self.GRADE_SCALE.get(next_grade, {}) if next_grade else None
         
         for component, score in component_scores.items():
             if component == "edges" and score < 80:
-                if int(grade) <= 7:
+                if current_grade_num <= 7:
                     suggestions.append("Edge wear is preventing higher grade - PSA values sharp, clean edges")
                 else:
                     suggestions.append("Minor edge imperfections detected - protect with quality sleeves")
                     
             elif component == "corners" and score < 85:
-                if int(grade) <= 6:
+                if current_grade_num <= 6:
                     suggestions.append("Corner damage significantly impacts grade - PSA heavily weighs corner quality")
-                elif int(grade) <= 8:
+                elif current_grade_num <= 8:
                     suggestions.append("Slight corner fraying detected - handle with extreme care to prevent further damage")
                 else:
                     suggestions.append("Corners show excellent condition - maintain with proper storage")
                     
             elif component == "surface" and score < 80:
-                if int(grade) <= 5:
+                if current_grade_num <= 5:
                     suggestions.append("Surface defects are limiting grade potential - scratches and wear significantly impact PSA scores")
-                elif int(grade) <= 7:
+                elif current_grade_num <= 7:
                     suggestions.append("Minor surface wear detected - PSA allows slight wear at this grade level")
                 else:
                     suggestions.append("Surface shows minimal wear - protect from fingerprints and scratches")
@@ -196,15 +200,15 @@ class GradingSystem:
                 suggestions.append(f"Centering issues detected - PSA {grade} requires {front_tolerance}/{100-front_tolerance} or better centering")
         
         if not suggestions:
-            if int(grade) >= 9:
+            if current_grade_num >= 9:
                 suggestions.append("Excellent card quality! This card meets high PSA standards.")
-            elif int(grade) >= 7:
+            elif current_grade_num >= 7:
                 suggestions.append("Good card quality with only minor flaws preventing higher grade.")
             else:
                 suggestions.append("Card shows wear consistent with its grade level.")
         
         # Add grade-specific advice
-        if next_grade_info and int(grade) < 10:
+        if next_grade_info and current_grade_num < 10:
             suggestions.append(f"To achieve PSA {next_grade}: {next_grade_info.get('description', '')[:100]}...")
         
         return suggestions
@@ -356,7 +360,8 @@ class GradingSystem:
         # Check score variance - consistent scores indicate higher confidence
         scores = [result.get("score", 0) for result in analysis_results.values()]
         if len(scores) > 1:
-            score_variance = sum((s - sum(scores)/len(scores))**2 for s in scores) / len(scores)
+            mean_score = sum(scores) / len(scores)
+            score_variance = sum((s - mean_score)**2 for s in scores) / len(scores)
             if score_variance < 100:  # Low variance
                 return "High"
             elif score_variance < 400:  # Medium variance

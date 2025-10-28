@@ -25,7 +25,7 @@ class SimpleCardAnalyzer:
             file_size = os.path.getsize(image_path)
             self.image_size = file_size
             return True
-        except Exception:
+        except (OSError, FileNotFoundError, PermissionError):
             return False
     
     def analyze_edges(self) -> Dict[str, Any]:
