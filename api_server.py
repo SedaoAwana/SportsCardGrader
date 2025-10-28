@@ -96,9 +96,11 @@ async def health_check():
             "grading_system_available": hasattr(grader, 'generate_detailed_report')
         }
     except Exception as e:
+        # Log the full error internally but don't expose stack trace to users
+        print(f"Health check error: {e}")
         return {
-            "status": "degraded",
-            "message": f"System check failed: {str(e)}",
+            "status": "degraded", 
+            "message": "System check failed - backend components unavailable",
             "backend_available": False
         }
 
@@ -199,6 +201,19 @@ async def upload_and_analyze(file: UploadFile = File(...)):
         company_comparison = grader.compare_to_standards(analysis_results, "PSA")
         report['company_comparison'] = company_comparison
         
+        # Convert numpy types to Python native types for JSON serialization
+        def convert_numpy_types(obj):
+            if hasattr(obj, 'item'):  # numpy scalar
+                return obj.item()
+            elif isinstance(obj, dict):
+                return {k: convert_numpy_types(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_numpy_types(v) for v in obj]
+            else:
+                return obj
+        
+        report = convert_numpy_types(report)
+        
         # Complete analysis
         analysis_store[analysis_id].update({
             "status": "completed",
@@ -215,11 +230,14 @@ async def upload_and_analyze(file: UploadFile = File(...)):
         
     except Exception as e:
         # Handle analysis errors
+        # Log the full error internally but don't expose details to users
+        print(f"Analysis error: {e}")
+        
         analysis_store[analysis_id].update({
             "status": "error",
-            "message": f"Analysis failed: {str(e)}"
+            "message": "Analysis failed - please try again with a different image"
         })
-        analysis_store[analysis_id]["debug_info"]["error"] = str(e)
+        analysis_store[analysis_id]["debug_info"]["error"] = "Internal processing error"
         
         # Clean up temporary file if it exists
         if 'temp_file_path' in locals():
@@ -230,7 +248,7 @@ async def upload_and_analyze(file: UploadFile = File(...)):
                 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Analysis failed: {str(e)}"
+            detail="Analysis failed - please try again with a different image"
         )
 
 @app.get("/api/analysis/{analysis_id}", response_model=AnalysisStatus)
