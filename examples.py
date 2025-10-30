@@ -78,6 +78,14 @@ def example_2_custom_weights():
     print()
 
 
+def parse_grade_for_sorting(grade_str: str) -> float:
+    """Parse grade string to float for sorting, returning 0 if invalid."""
+    try:
+        return float(grade_str)
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def example_3_batch_analysis():
     """Example 3: Batch analysis with performance tracking"""
     print("="*60)
@@ -111,8 +119,8 @@ def example_3_batch_analysis():
                     "description": report['grade_description']
                 })
     
-    # Sort by grade (highest first), handling both integer and string grades
-    results.sort(key=lambda x: (float(x['grade']) if x['grade'].replace('.', '', 1).isdigit() else 0, x['score']), reverse=True)
+    # Sort by grade (highest first), then by score
+    results.sort(key=lambda x: (parse_grade_for_sorting(x['grade']), x['score']), reverse=True)
     
     print("\nBATCH ANALYSIS RESULTS:")
     print("-" * 50)
