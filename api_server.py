@@ -341,6 +341,53 @@ async def list_analyses():
         ]
     }
 
+
+@app.post("/api/debug/configure")
+async def configure_debug_mode(enabled: bool = True, trace: bool = False):
+    """
+    Configure debug mode settings
+    """
+    import logging
+    configure_debug(
+        enabled=enabled,
+        trace_enabled=trace,
+        performance_tracking=True,
+        log_level=logging.DEBUG if enabled else logging.INFO
+    )
+    
+    logger.info(f"Debug mode configured: enabled={enabled}, trace={trace}")
+    
+    return {
+        "debug_enabled": enabled,
+        "trace_enabled": trace,
+        "message": "Debug settings updated"
+    }
+
+
+@app.get("/api/debug/stats")
+async def get_debug_stats():
+    """
+    Get debug statistics and system information
+    """
+    import psutil
+    import sys
+    
+    return {
+        "system": {
+            "python_version": sys.version,
+            "platform": sys.platform,
+            "memory_usage_mb": psutil.Process().memory_info().rss / 1024 / 1024,
+            "cpu_percent": psutil.cpu_percent(interval=0.1)
+        },
+        "analysis_store": {
+            "total_analyses": len(analysis_store),
+            "completed": sum(1 for d in analysis_store.values() if d["status"] == "completed"),
+            "pending": sum(1 for d in analysis_store.values() if d["status"] == "pending"),
+            "processing": sum(1 for d in analysis_store.values() if d["status"] == "processing"),
+            "errors": sum(1 for d in analysis_store.values() if d["status"] == "error")
+        }
+    }
+
 if __name__ == "__main__":
     import uvicorn
     
