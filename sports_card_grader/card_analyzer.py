@@ -7,6 +7,11 @@ import numpy as np
 from typing import Dict, Tuple, Any
 import math
 
+from .debug_utils import get_logger, trace_function, debug_checkpoint
+
+# Initialize logger for this module
+logger = get_logger(__name__)
+
 
 class CardAnalyzer:
     """Analyzes sports cards for quality assessment across multiple criteria."""
@@ -16,21 +21,31 @@ class CardAnalyzer:
         self.gray = None
         self.edges = None
         
+    @trace_function
     def load_image(self, image_path: str) -> bool:
         """Load an image for analysis."""
         try:
+            debug_checkpoint("Loading image", {"path": image_path})
             self.image = cv2.imread(image_path)
             if self.image is None:
+                logger.warning(f"Failed to load image: {image_path}")
                 return False
             self.gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+            logger.info(f"Successfully loaded image: {image_path}")
+            debug_checkpoint("Image loaded successfully", {
+                "shape": self.image.shape,
+                "dtype": str(self.image.dtype)
+            })
             return True
         except (cv2.error, FileNotFoundError, PermissionError) as e:
-            print(f"Error loading image: {e}")
+            logger.error(f"Error loading image: {e}")
             return False
     
+    @trace_function
     def analyze_edges(self) -> Dict[str, Any]:
         """Analyze the quality of card edges."""
         if self.gray is None:
+            logger.warning("Cannot analyze edges: no image loaded")
             return {"score": 0, "details": "No image loaded"}
         
         # Apply Gaussian blur to reduce noise
@@ -69,6 +84,8 @@ class CardAnalyzer:
         
         edge_score = (corner_score + smoothness_score) / 2
         
+        logger.debug(f"Edge analysis: score={edge_score:.2f}, corners={len(approx)}, smoothness={smoothness_score:.2f}")
+        
         return {
             "score": min(100, max(0, edge_score)),
             "details": {
@@ -80,9 +97,11 @@ class CardAnalyzer:
             }
         }
     
+    @trace_function
     def analyze_corners(self) -> Dict[str, Any]:
         """Analyze the quality of card corners."""
         if self.gray is None:
+            logger.warning("Cannot analyze corners: no image loaded")
             return {"score": 0, "details": "No image loaded"}
         
         # Use Harris corner detection
@@ -121,6 +140,8 @@ class CardAnalyzer:
         
         corner_score = (sharpness_score + count_score) / 2
         
+        logger.debug(f"Corner analysis: score={corner_score:.2f}, num_corners={num_corners}, sharpness={sharpness_score:.2f}")
+        
         return {
             "score": min(100, max(0, corner_score)),
             "details": {
@@ -131,9 +152,11 @@ class CardAnalyzer:
             }
         }
     
+    @trace_function
     def analyze_surface(self) -> Dict[str, Any]:
         """Analyze the surface quality of the card."""
         if self.gray is None:
+            logger.warning("Cannot analyze surface: no image loaded")
             return {"score": 0, "details": "No image loaded"}
         
         # Calculate image statistics for surface quality assessment
@@ -174,6 +197,8 @@ class CardAnalyzer:
         
         surface_score = (defect_quality + texture_quality) / 2
         
+        logger.debug(f"Surface analysis: score={surface_score:.2f}, defects={defect_score:.2f}, texture_var={avg_texture_variance:.2f}")
+        
         return {
             "score": min(100, max(0, surface_score)),
             "details": {
@@ -186,9 +211,11 @@ class CardAnalyzer:
             }
         }
     
+    @trace_function
     def analyze_centering(self) -> Dict[str, Any]:
         """Analyze the centering of the card content."""
         if self.gray is None:
+            logger.warning("Cannot analyze centering: no image loaded")
             return {"score": 0, "details": "No image loaded"}
         
         # Find the card boundary using edge detection
@@ -240,6 +267,8 @@ class CardAnalyzer:
         
         centering_score = (centering_x_score + centering_y_score + border_uniformity_score) / 3
         
+        logger.debug(f"Centering analysis: score={centering_score:.2f}, offset_x={offset_x}, offset_y={offset_y}")
+        
         return {
             "score": min(100, max(0, centering_score)),
             "details": {
@@ -253,12 +282,17 @@ class CardAnalyzer:
             }
         }
     
+    @trace_function
     def analyze_all(self) -> Dict[str, Any]:
         """Perform complete analysis of the card."""
+        logger.info("Starting complete card analysis")
+        
         edge_analysis = self.analyze_edges()
         corner_analysis = self.analyze_corners()
         surface_analysis = self.analyze_surface()
         centering_analysis = self.analyze_centering()
+        
+        logger.info("Card analysis complete")
         
         return {
             "edges": edge_analysis,

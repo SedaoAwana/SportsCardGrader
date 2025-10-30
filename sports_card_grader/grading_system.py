@@ -4,6 +4,11 @@ Grading System - Converts analysis results into standardized grades
 
 from typing import Dict, Any, Tuple
 
+from .debug_utils import get_logger, trace_function
+
+# Initialize logger for this module
+logger = get_logger(__name__)
+
 
 class GradingSystem:
     """Converts card analysis results into standardized grading scores."""
@@ -90,6 +95,7 @@ class GradingSystem:
         else:
             self.weights = self.DEFAULT_WEIGHTS.copy()
     
+    @trace_function
     def calculate_overall_score(self, analysis_results: Dict[str, Any]) -> float:
         """Calculate weighted overall score from analysis results."""
         total_score = 0.0
@@ -100,8 +106,10 @@ class GradingSystem:
                 total_score += component_score * weight
             else:
                 # If component missing, penalize heavily
+                logger.warning(f"Missing component in analysis: {component}")
                 total_score += 0 * weight
         
+        logger.debug(f"Calculated overall score: {total_score:.2f}")
         return min(100.0, max(0.0, total_score))
     
     def score_to_grade(self, score: float) -> Tuple[str, str, str]:
@@ -112,10 +120,14 @@ class GradingSystem:
         
         return "1", "Poor", self.GRADE_SCALE["1"]["description"]
     
+    @trace_function
     def generate_detailed_report(self, analysis_results: Dict[str, Any]) -> Dict[str, Any]:
         """Generate comprehensive grading report with PSA standards."""
+        logger.info("Generating detailed grading report")
         overall_score = self.calculate_overall_score(analysis_results)
         grade, grade_label, grade_description = self.score_to_grade(overall_score)
+        
+        logger.info(f"Report generated: Grade {grade}/10 ({grade_label}), Score: {overall_score:.2f}")
         
         # Calculate component contributions
         component_contributions = {}
