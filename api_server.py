@@ -17,17 +17,29 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
 # Add current directory to path to import our modules
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 
-# Import grading system with fallback handling
+# Import grading system with fallback handling and debug utilities
 try:
-    from sports_card_grader import CardAnalyzer, GradingSystem
+    from sports_card_grader import (
+        CardAnalyzer, GradingSystem, 
+        configure_debug, get_logger, request_context,
+        set_request_id
+    )
 except ImportError as e:
-    print(f"Warning: Could not import full analyzer: {e}")
+    print(f"Warning: Could not import modules: {e}")
     print("Using fallback implementation")
     from sports_card_grader import CardAnalyzer, GradingSystem
+
+# Initialize logger
+logger = get_logger(__name__)
 
 app = FastAPI(
     title="Sports Card Grader API",
@@ -88,16 +100,18 @@ async def health_check():
         analyzer = CardAnalyzer()
         grader = GradingSystem()
         
+        logger.info("Health check passed")
+        
         return {
             "status": "healthy",
             "message": "All systems operational",
             "backend_available": True,
             "opencv_available": hasattr(analyzer, 'analyze_edges'),
-            "grading_system_available": hasattr(grader, 'generate_detailed_report')
+            "grading_system_available": hasattr(grader, 'generate_detailed_report'),
+            "debug_enabled": True
         }
     except Exception as e:
-        # Log the full error internally but don't expose stack trace to users
-        print(f"Health check error: {e}")
+        logger.error(f"Health check error: {e}", exc_info=True)
         return {
             "status": "degraded", 
             "message": "System check failed - backend components unavailable",
@@ -110,15 +124,20 @@ async def upload_and_analyze(file: UploadFile = File(...)):
     Upload a card image and start analysis
     Returns analysis_id for tracking progress
     """
-    # Validate file type
-    if not file.content_type or not file.content_type.startswith('image/'):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be an image"
-        )
-    
-    # Generate unique analysis ID
+    # Generate unique analysis ID for causality tracking
     analysis_id = str(uuid.uuid4())
+    
+    # Use request context for causality tracking
+    with request_context(analysis_id):
+        logger.info(f"Starting analysis for file: {file.filename}")
+        
+        # Validate file type
+        if not file.content_type or not file.content_type.startswith('image/'):
+            logger.warning(f"Invalid file type: {file.content_type}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be an image"
+            )
     
     # Initialize analysis status
     analysis_store[analysis_id] = {
@@ -129,7 +148,8 @@ async def upload_and_analyze(file: UploadFile = File(...)):
         "debug_info": {
             "file_size": 0,
             "file_type": file.content_type,
-            "analysis_steps": []
+            "analysis_steps": [],
+            "request_id": analysis_id
         }
     }
     
@@ -137,6 +157,7 @@ async def upload_and_analyze(file: UploadFile = File(...)):
         # Read and save uploaded file
         content = await file.read()
         analysis_store[analysis_id]["debug_info"]["file_size"] = len(content)
+        logger.debug(f"File uploaded: {len(content)} bytes")
         
         # Create temporary file for analysis
         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file.filename.split('.')[-1]}") as temp_file:
@@ -226,12 +247,13 @@ async def upload_and_analyze(file: UploadFile = File(...)):
         # Clean up temporary file
         os.unlink(temp_file_path)
         
+        logger.info(f"Analysis completed successfully: {analysis_id}")
+        
         return {"analysis_id": analysis_id, "status": "processing"}
         
     except Exception as e:
-        # Handle analysis errors
-        # Log the full error internally but don't expose details to users
-        print(f"Analysis error: {e}")
+        # Handle analysis errors with detailed logging
+        logger.error(f"Analysis error for {analysis_id}: {e}", exc_info=True)
         
         analysis_store[analysis_id].update({
             "status": "error",
@@ -322,6 +344,58 @@ async def list_analyses():
             }
             for aid, data in analysis_store.items()
         ]
+    }
+
+
+@app.post("/api/debug/configure")
+async def configure_debug_mode(enabled: bool = True, trace: bool = False):
+    """
+    Configure debug mode settings
+    """
+    import logging
+    configure_debug(
+        enabled=enabled,
+        trace_enabled=trace,
+        performance_tracking=True,
+        log_level=logging.DEBUG if enabled else logging.INFO
+    )
+    
+    logger.info(f"Debug mode configured: enabled={enabled}, trace={trace}")
+    
+    return {
+        "debug_enabled": enabled,
+        "trace_enabled": trace,
+        "message": "Debug settings updated"
+    }
+
+
+@app.get("/api/debug/stats")
+async def get_debug_stats():
+    """
+    Get debug statistics and system information
+    """
+    if psutil is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="psutil not available - install with: pip install psutil"
+        )
+    
+    import sys
+    
+    return {
+        "system": {
+            "python_version": sys.version,
+            "platform": sys.platform,
+            "memory_usage_mb": psutil.Process().memory_info().rss / 1024 / 1024,
+            "cpu_percent": psutil.cpu_percent(interval=0.1)
+        },
+        "analysis_store": {
+            "total_analyses": len(analysis_store),
+            "completed": sum(1 for d in analysis_store.values() if d["status"] == "completed"),
+            "pending": sum(1 for d in analysis_store.values() if d["status"] == "pending"),
+            "processing": sum(1 for d in analysis_store.values() if d["status"] == "processing"),
+            "errors": sum(1 for d in analysis_store.values() if d["status"] == "error")
+        }
     }
 
 if __name__ == "__main__":

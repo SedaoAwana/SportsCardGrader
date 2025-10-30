@@ -6,6 +6,11 @@ import os
 import math
 from typing import Dict, Any, Tuple
 
+from .debug_utils import get_logger, trace_function, debug_checkpoint
+
+# Initialize logger for this module
+logger = get_logger(__name__)
+
 
 class SimpleCardAnalyzer:
     """Simple sports card analyzer using basic image processing concepts."""
@@ -14,20 +19,26 @@ class SimpleCardAnalyzer:
         self.image_path = None
         self.image_size = None
         
+    @trace_function
     def load_image(self, image_path: str) -> bool:
         """Check if image exists and get basic info."""
         try:
+            debug_checkpoint("Loading image (simple analyzer)", {"path": image_path})
             if not os.path.exists(image_path):
+                logger.warning(f"Image file not found: {image_path}")
                 return False
             
             self.image_path = image_path
             # Get file size as a proxy for image complexity
             file_size = os.path.getsize(image_path)
             self.image_size = file_size
+            logger.info(f"Image loaded (simple mode): {image_path}, size: {file_size} bytes")
             return True
-        except (OSError, FileNotFoundError, PermissionError):
+        except (OSError, FileNotFoundError, PermissionError) as e:
+            logger.error(f"Error loading image: {e}")
             return False
     
+    @trace_function
     def analyze_edges(self) -> Dict[str, Any]:
         """Simulate edge analysis based on file characteristics."""
         if not self.image_path:
@@ -62,6 +73,7 @@ class SimpleCardAnalyzer:
             }
         }
     
+    @trace_function
     def analyze_corners(self) -> Dict[str, Any]:
         """Simulate corner analysis."""
         if not self.image_path:
@@ -91,6 +103,7 @@ class SimpleCardAnalyzer:
             }
         }
     
+    @trace_function
     def analyze_surface(self) -> Dict[str, Any]:
         """Simulate surface analysis."""
         if not self.image_path:
@@ -120,6 +133,7 @@ class SimpleCardAnalyzer:
             }
         }
     
+    @trace_function
     def analyze_centering(self) -> Dict[str, Any]:
         """Simulate centering analysis."""
         if not self.image_path:
@@ -149,8 +163,10 @@ class SimpleCardAnalyzer:
             }
         }
     
+    @trace_function
     def analyze_all(self) -> Dict[str, Any]:
         """Perform complete analysis of the card."""
+        logger.info("Starting complete card analysis (simple mode)")
         return {
             "edges": self.analyze_edges(),
             "corners": self.analyze_corners(),

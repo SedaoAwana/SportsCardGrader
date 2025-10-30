@@ -8,8 +8,8 @@ import sys
 import json
 from pathlib import Path
 
-from .card_analyzer import CardAnalyzer
-from .grading_system import GradingSystem
+# Use the fallback-aware imports from the package
+from . import CardAnalyzer, GradingSystem
 
 
 def print_analysis_summary(report: dict):

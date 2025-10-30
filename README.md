@@ -155,7 +155,69 @@ The system uses computer vision techniques including:
 - ✅ Multiple output formats
 - ✅ Grading company standards support
 - ✅ Comprehensive error handling
+- ✅ **Debugging protocols with tracing and causality tracking**
 - ⚠️ Currently includes fallback implementation for environments without OpenCV
+
+## Debugging Features
+
+The Sports Card Grader includes comprehensive debugging capabilities:
+
+### Active Tracing
+- Function entry/exit logging with the `@trace_function` decorator
+- Automatic timing information for performance analysis
+- Request ID tracking for causality across function calls
+
+### Usage Examples
+
+```python
+from sports_card_grader import configure_debug, get_logger
+import logging
+
+# Enable debug mode with full tracing
+configure_debug(
+    enabled=True,
+    trace_enabled=True,
+    performance_tracking=True,
+    log_level=logging.DEBUG
+)
+
+# Use logger with request ID tracking
+logger = get_logger(__name__)
+logger.info("Starting analysis")
+```
+
+### Wolf Fence Algorithm
+Binary search debugging to isolate issues:
+
+```python
+from sports_card_grader import WolfFenceDebugger
+
+debugger = WolfFenceDebugger()
+
+# Add checkpoints to validate state at different points
+debugger.checkpoint("Image loaded", lambda: image is not None, {"path": image_path})
+debugger.checkpoint("Analysis complete", lambda: len(results) == 4, {"results": results})
+debugger.checkpoint("Grade calculated", lambda: grade > 0 and grade <= 10)
+
+# Show which checkpoint failed first
+debugger.summary()
+```
+
+### Test with Debug Mode
+
+```bash
+# Run tests with full debug output
+python test_demo.py --debug
+
+# Run examples with performance tracking
+python examples.py
+```
+
+### API Debug Endpoints
+
+- `GET /api/debug/stats` - System statistics and analysis metrics
+- `POST /api/debug/configure` - Enable/disable debug mode
+- `GET /api/analysis/{id}/debug` - Detailed debug info for specific analysis
 
 ## Future Enhancements
 

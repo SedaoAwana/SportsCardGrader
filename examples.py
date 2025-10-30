@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sports Card Grader - Comprehensive Usage Examples
+Sports Card Grader - Comprehensive Usage Examples with Debug Support
 """
 
 import os
@@ -11,11 +11,18 @@ import json
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 
-from sports_card_grader import CardAnalyzer, GradingSystem
+from sports_card_grader import (
+    CardAnalyzer, GradingSystem,
+    configure_debug, get_logger,
+    timed_operation
+)
+
+# Initialize logger
+logger = get_logger(__name__)
 
 
 def example_1_basic_analysis():
-    """Example 1: Basic card analysis"""
+    """Example 1: Basic card analysis with timing"""
     print("="*60)
     print("EXAMPLE 1: Basic Card Analysis")
     print("="*60)
@@ -23,47 +30,24 @@ def example_1_basic_analysis():
     analyzer = CardAnalyzer()
     grader = GradingSystem()
     
-    # Analyze a sample card
-    card_path = "sample_images/mint_condition_card.jpg"
-    if analyzer.load_image(card_path):
-        analysis = analyzer.analyze_all()
-        report = grader.generate_detailed_report(analysis)
-        
-        print(f"Card: {os.path.basename(card_path)}")
-        print(f"Predicted Grade: PSA {report['predicted_grade']}/10")
-        print(f"Overall Score: {report['overall_score']}/100")
-        print(f"Grade Description: {report['grade_description']}")
-        print()
-
-
-def example_2_detailed_analysis():
-    """Example 2: Detailed component analysis"""
-    print("="*60)
-    print("EXAMPLE 2: Detailed Component Analysis")
-    print("="*60)
+    card_path = os.path.join(current_dir, "sample_images", "mint_condition_card.jpg")
     
-    analyzer = CardAnalyzer()
-    
-    card_path = "sample_images/surface_scratch_card.jpg"
-    if analyzer.load_image(card_path):
-        # Get individual component analyses
-        edges = analyzer.analyze_edges()
-        corners = analyzer.analyze_corners()
-        surface = analyzer.analyze_surface()
-        centering = analyzer.analyze_centering()
-        
-        print(f"Card: {os.path.basename(card_path)}")
-        print(f"Edges Score: {edges['score']:.1f}/100")
-        print(f"Corners Score: {corners['score']:.1f}/100") 
-        print(f"Surface Score: {surface['score']:.1f}/100")
-        print(f"Centering Score: {centering['score']:.1f}/100")
-        print()
+    with timed_operation("basic_analysis", logger):
+        if analyzer.load_image(card_path):
+            analysis = analyzer.analyze_all()
+            report = grader.generate_detailed_report(analysis)
+            
+            print(f"Card: {os.path.basename(card_path)}")
+            print(f"Predicted Grade: PSA {report['predicted_grade']}/10")
+            print(f"Overall Score: {report['overall_score']}/100")
+            print(f"Grade Description: {report['grade_description']}")
+    print()
 
 
-def example_3_custom_weights():
-    """Example 3: Custom grading weights"""
+def example_2_custom_weights():
+    """Example 2: Custom grading weights (emphasizing corners)"""
     print("="*60)
-    print("EXAMPLE 3: Custom Grading Weights")
+    print("EXAMPLE 2: Custom Grading Weights")
     print("="*60)
     
     analyzer = CardAnalyzer()
@@ -79,7 +63,8 @@ def example_3_custom_weights():
     grader_custom = GradingSystem(custom_weights)
     grader_standard = GradingSystem()  # Standard weights
     
-    card_path = "sample_images/poor_corner_damage.jpg"
+    card_path = os.path.join(current_dir, "sample_images", "poor_corner_damage.jpg")
+    
     if analyzer.load_image(card_path):
         analysis = analyzer.analyze_all()
         
@@ -90,136 +75,122 @@ def example_3_custom_weights():
         print(f"Standard Weights Grade: PSA {report_standard['predicted_grade']}/10 ({report_standard['overall_score']:.1f}/100)")
         print(f"Custom Weights Grade: PSA {report_custom['predicted_grade']}/10 ({report_custom['overall_score']:.1f}/100)")
         print("(Custom weights emphasize corner quality more)")
-        print()
-
-
-def example_4_batch_analysis():
-    """Example 4: Batch analysis of multiple cards"""
-    print("="*60)
-    print("EXAMPLE 4: Batch Analysis")
-    print("="*60)
-    
-    analyzer = CardAnalyzer()
-    grader = GradingSystem()
-    
-    sample_dir = "sample_images"
-    card_files = [f for f in os.listdir(sample_dir) if f.endswith('.jpg')]
-    
-    results = []
-    for card_file in card_files:
-        card_path = os.path.join(sample_dir, card_file)
-        if analyzer.load_image(card_path):
-            analysis = analyzer.analyze_all()
-            report = grader.generate_detailed_report(analysis)
-            
-            results.append({
-                "card": card_file,
-                "grade": report['predicted_grade'],
-                "score": report['overall_score'],
-                "description": report['grade_description']
-            })
-    
-    # Sort by grade (highest first)
-    results.sort(key=lambda x: float(x['grade']), reverse=True)
-    
-    print("BATCH ANALYSIS RESULTS:")
-    print("-" * 40)
-    for result in results:
-        print(f"{result['card']:25} PSA {result['grade']}/10 ({result['score']:5.1f}/100) {result['description']}")
     print()
 
 
-def example_5_psa_compliance_check():
-    """Example 5: PSA compliance detailed check"""
+def parse_grade_for_sorting(grade_str: str) -> float:
+    """Parse grade string to float for sorting, returning 0 if invalid."""
+    try:
+        return float(grade_str)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def example_3_batch_analysis():
+    """Example 3: Batch analysis with performance tracking"""
     print("="*60)
-    print("EXAMPLE 5: PSA Compliance Analysis")
+    print("EXAMPLE 3: Batch Analysis with Performance Tracking")
     print("="*60)
     
     analyzer = CardAnalyzer()
     grader = GradingSystem()
     
-    card_path = "sample_images/gem_mint_perfect.jpg"
-    if analyzer.load_image(card_path):
-        analysis = analyzer.analyze_all()
-        report = grader.generate_detailed_report(analysis)
-        
-        print(f"Card: {os.path.basename(card_path)}")
-        print(f"Predicted Grade: PSA {report['predicted_grade']}/10")
-        
-        # Check PSA compliance
-        if 'psa_compliance' in report:
-            compliance = report['psa_compliance']
-            print(f"\nPSA Compliance: {compliance['compliance_summary']}")
-            
-            print("\nComponent Compliance Details:")
-            for component, check in compliance['component_compliance'].items():
-                status = "✅ PASS" if check['compliant'] else "❌ FAIL"
-                print(f"  {component.title()}: {status} - {check['message']}")
-        
-        # Check centering specifically
-        if 'centering_evaluation' in report:
-            centering = report['centering_evaluation']
-            print(f"\nCentering Details:")
-            print(f"  Estimated Ratio: {centering['estimated_centering_ratio']}")
-            print(f"  Required: {centering['required_for_grade']} or better")
-            print(f"  Meets Standard: {'✅ Yes' if centering['meets_psa_standard'] else '❌ No'}")
-        print()
+    sample_dir = os.path.join(current_dir, "sample_images")
+    
+    if not os.path.exists(sample_dir):
+        print(f"Sample directory not found: {sample_dir}")
+        return
+    
+    card_files = [f for f in os.listdir(sample_dir) if f.endswith('.jpg')]
+    
+    results = []
+    
+    with timed_operation("batch_analysis", logger):
+        for card_file in card_files:
+            card_path = os.path.join(sample_dir, card_file)
+            if analyzer.load_image(card_path):
+                analysis = analyzer.analyze_all()
+                report = grader.generate_detailed_report(analysis)
+                
+                results.append({
+                    "card": card_file,
+                    "grade": report['predicted_grade'],
+                    "score": report['overall_score'],
+                    "description": report['grade_description']
+                })
+    
+    # Sort by grade (highest first), then by score
+    results.sort(key=lambda x: (parse_grade_for_sorting(x['grade']), x['score']), reverse=True)
+    
+    print("\nBATCH ANALYSIS RESULTS:")
+    print("-" * 50)
+    for result in results:
+        print(f"{result['card']:30} PSA {result['grade']}/10 ({result['score']:5.1f}/100) {result['description']}")
+    print()
 
 
-def example_6_json_output():
-    """Example 6: JSON output for integration"""
+def example_4_json_output():
+    """Example 4: JSON output for API integration"""
     print("="*60)
-    print("EXAMPLE 6: JSON Output for Integration")
+    print("EXAMPLE 4: JSON Output for Integration")
     print("="*60)
     
     analyzer = CardAnalyzer()
     grader = GradingSystem()
     
-    card_path = "sample_images/regular_card.jpg"
+    card_path = os.path.join(current_dir, "sample_images", "regular_card.jpg")
+    
     if analyzer.load_image(card_path):
         analysis = analyzer.analyze_all()
         report = grader.generate_detailed_report(analysis)
         
         # Create JSON output
         json_output = {
-            "card_path": card_path,
-            "analysis_timestamp": "2024-10-28T19:30:00Z",
-            "analysis_results": analysis,
-            "grading_report": report
-        }
-        
-        print("JSON Output (truncated for display):")
-        print(json.dumps({
+            "card_path": os.path.basename(card_path),
             "predicted_grade": report['predicted_grade'],
             "overall_score": report['overall_score'],
             "grade_description": report['grade_description'],
-            "component_scores": {k: v['score'] for k, v in report['component_breakdown'].items()}
-        }, indent=2))
-        print()
+            "component_scores": {k: v['score'] for k, v in report['component_breakdown'].items()},
+            "strengths": report.get('strengths', []),
+            "weaknesses": report.get('weaknesses', [])
+        }
+        
+        print("JSON Output:")
+        print(json.dumps(json_output, indent=2))
+    print()
 
 
 def main():
     """Run all examples"""
+    import logging
+    
+    # Configure debug mode
+    configure_debug(
+        enabled=True,
+        trace_enabled=False,  # Set to True to see function tracing
+        performance_tracking=True,
+        log_level=logging.INFO
+    )
+    
     print("🏆 SPORTS CARD GRADER - USAGE EXAMPLES")
     print("=" * 60)
-    print("This script demonstrates various ways to use the Sports Card Grader")
+    print("Demonstrating various ways to use the Sports Card Grader")
     print()
     
     try:
         example_1_basic_analysis()
-        example_2_detailed_analysis()
-        example_3_custom_weights()
-        example_4_batch_analysis()
-        example_5_psa_compliance_check()
-        example_6_json_output()
+        example_2_custom_weights()
+        example_3_batch_analysis()
+        example_4_json_output()
         
         print("="*60)
         print("✅ All examples completed successfully!")
-        print("\nTo run the CLI interface:")
-        print("  python sports_card_cli.py analyze sample_images/mint_condition_card.jpg")
-        print("  python sports_card_cli.py demo")
+        print("\nTo run with detailed tracing, use test_demo.py --debug")
+        print("To run the CLI interface, use:")
+        print("  python -m sports_card_grader.cli analyze <image_path>")
         
     except Exception as e:
+        logger.error(f"Error running examples: {e}", exc_info=True)
         print(f"❌ Error running examples: {e}")
 
 
