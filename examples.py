@@ -111,8 +111,8 @@ def example_3_batch_analysis():
                     "description": report['grade_description']
                 })
     
-    # Sort by grade (highest first)
-    results.sort(key=lambda x: (int(x['grade']) if x['grade'].isdigit() else 0, x['score']), reverse=True)
+    # Sort by grade (highest first), handling both integer and string grades
+    results.sort(key=lambda x: (float(x['grade']) if x['grade'].replace('.', '', 1).isdigit() else 0, x['score']), reverse=True)
     
     print("\nBATCH ANALYSIS RESULTS:")
     print("-" * 50)

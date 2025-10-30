@@ -193,9 +193,14 @@ Binary search debugging to isolate issues:
 from sports_card_grader import WolfFenceDebugger
 
 debugger = WolfFenceDebugger()
-debugger.checkpoint("Step 1", lambda: condition_check(), {"data": value})
-debugger.checkpoint("Step 2", lambda: another_check())
-debugger.summary()  # Shows which checkpoint failed first
+
+# Add checkpoints to validate state at different points
+debugger.checkpoint("Image loaded", lambda: image is not None, {"path": image_path})
+debugger.checkpoint("Analysis complete", lambda: len(results) == 4, {"results": results})
+debugger.checkpoint("Grade calculated", lambda: grade > 0 and grade <= 10)
+
+# Show which checkpoint failed first
+debugger.summary()
 ```
 
 ### Test with Debug Mode

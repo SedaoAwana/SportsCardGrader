@@ -17,6 +17,11 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
 # Add current directory to path to import our modules
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
@@ -369,7 +374,12 @@ async def get_debug_stats():
     """
     Get debug statistics and system information
     """
-    import psutil
+    if psutil is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="psutil not available - install with: pip install psutil"
+        )
+    
     import sys
     
     return {
