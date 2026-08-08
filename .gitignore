@@ -46,3 +46,5 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+# Claude Code personal settings (not for the open-source repo)
+.claude/settings.local.json
