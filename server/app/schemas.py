@@ -17,8 +17,8 @@ class AreaObservation(BaseModel):
 
 class Condition(BaseModel):
     observations: list[AreaObservation]
-    grade_low: int = Field(ge=1, le=10)
-    grade_high: int = Field(ge=1, le=10)
+    grade_low: float = Field(ge=1, le=10)
+    grade_high: float = Field(ge=1, le=10)
 
     @model_validator(mode="after")
     def range_ordered(self):
@@ -38,19 +38,28 @@ class VisionResult(BaseModel):
     authenticity: Optional[Authenticity] = None
     ai_value_note: Optional[str] = None  # model's rough value memory; fallback when comps are empty
 
+    @model_validator(mode="after")
+    def fill_photo_issue(self):
+        if not self.photo_ok and self.photo_issue is None:
+            self.photo_issue = (
+                "Photo could not be assessed — try retaking with less glare "
+                "and the whole card in frame."
+            )
+        return self
+
 class CompListing(BaseModel):
     title: str
-    price: float
+    price: float = Field(ge=0)
     graded: bool
     grade_label: Optional[str] = None
     url: Optional[str] = None
 
 class CompsSummary(BaseModel):
     source: Literal["active_listings", "sold"]
-    raw_count: int
+    raw_count: int = Field(ge=0)
     raw_low: Optional[float] = None
     raw_median: Optional[float] = None
-    graded_count: int
+    graded_count: int = Field(ge=0)
     graded_low: Optional[float] = None
     graded_median: Optional[float] = None
 
