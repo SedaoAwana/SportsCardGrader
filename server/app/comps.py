@@ -3,7 +3,15 @@ import statistics
 
 from app.schemas import CompListing, CompsSummary
 
-_GRADED_RE = re.compile(r"\b(PSA|BGS|SGC|CGC|TAG)\s*\.?\s*(10|[1-9](?:\.5)?)\b", re.I)
+# Company name, optionally followed by a bounded allowlist of condition words
+# ("PSA GEM MINT 10", "BGS Gem Mint 9.5"), then the grade. Arbitrary words must
+# NOT bridge the gap — "Vintage PSA card lot of 10" is not a graded listing.
+_GRADED_RE = re.compile(
+    r"\b(PSA|BGS|SGC|CGC|TAG)"
+    r"(?:\s+(?:GEM|MINT|MT|GM|PRISTINE|AUTHENTIC))*"
+    r"\s*\.?\s*(10|[1-9](?:\.5)?)\b",
+    re.I,
+)
 
 def is_graded(title: str) -> bool:
     return bool(_GRADED_RE.search(title))

@@ -361,7 +361,7 @@ git add server/app/comps.py server/tests/test_comps.py && git commit -m "feat(se
 
 ### Task 6: Verdict engine (pure functions — test hard)
 
-The money logic. Value range comes from the **raw** bucket (v1 assumes the card in hand is raw); graded upside is mentioned in reasoning only. Thresholds: undervalued if ask ≤ 70% of value_low, overpriced if ask ≥ 120% of value_high.
+The money logic. Value range comes from the **raw** bucket (v1 assumes the card in hand is raw); graded upside is mentioned in reasoning only. Comps sufficiency is judged on the raw bucket alone (raw_count >= MIN_COMPS) — graded comps cannot rescue a thin raw bucket, since the value range is priced entirely from raw listings. Thresholds: undervalued if ask ≤ 70% of value_low, overpriced if ask ≥ 120% of value_high.
 
 **Files:**
 - Create: `server/app/verdict.py`
@@ -428,9 +428,9 @@ def decide(comps: CompsSummary, condition: Condition,
     if identity_confidence < MIN_CONFIDENCE:
         return Verdict(verdict="not_enough_data",
                        reasoning="Card identification confidence is too low to price reliably. Try a clearer photo.")
-    if comps.raw_count + comps.graded_count < MIN_COMPS or comps.raw_low is None:
+    if comps.raw_count < MIN_COMPS or comps.raw_low is None or comps.raw_median is None:
         return Verdict(verdict="not_enough_data",
-                       reasoning="Too few comparable listings found to establish a value.")
+                       reasoning="Too few comparable raw listings found to establish a value.")
 
     value_low, value_high = comps.raw_low, comps.raw_median
     src = "sold prices" if comps.source == "sold" else "current asking prices"

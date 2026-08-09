@@ -21,15 +21,18 @@ def decide(comps: CompsSummary, condition: Condition,
             reasoning="Card identification confidence is too low to price reliably. "
                       "Try a clearer photo.",
         )
-    if (comps.raw_count + comps.graded_count < MIN_COMPS
+    # The value range is built from the raw bucket alone, so sufficiency must
+    # come from raw comps — graded listings cannot rescue a thin raw bucket.
+    if (comps.raw_count < MIN_COMPS
             or comps.raw_low is None or comps.raw_median is None):
         return Verdict(
             verdict="not_enough_data",
-            reasoning="Too few comparable listings found to establish a value.",
+            reasoning="Too few comparable raw listings found to establish a value.",
         )
 
     value_low, value_high = comps.raw_low, comps.raw_median
-    src = "sold prices" if comps.source == "sold" else "current asking prices"
+    noun = "sold price" if comps.source == "sold" else "current asking price"
+    src = noun if comps.raw_count == 1 else noun + "s"
     reasoning = (f"Raw copies range ${value_low:.0f}–${value_high:.0f} "
                  f"based on {comps.raw_count} {src}.")
     if condition.grade_high >= 8 and comps.graded_count and comps.graded_low:
