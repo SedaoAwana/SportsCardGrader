@@ -21,6 +21,9 @@ wheels/
 *.egg
 MANIFEST
 
+# Environment variables (secrets — never commit)
+.env
+
 # Virtual environments
 .venv/
 venv/
