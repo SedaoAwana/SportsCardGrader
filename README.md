@@ -1,183 +1,91 @@
-# Sports Card Grader
+# Card Scanner
 
-A comprehensive tool for analyzing sports cards to predict grading scores across multiple quality criteria.
+[![CI](https://img.shields.io/badge/CI-GitHub_Actions-blue)](.github/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Features
+Point your phone at a sports card and get an answer: what it is, what shape it's in, and whether the price is right.
 
-- **Edge Analysis**: Evaluates the quality and sharpness of card edges
-- **Corner Assessment**: Analyzes corner sharpness and potential damage
-- **Surface Quality**: Detects scratches, wear, and print quality issues
-- **Centering Evaluation**: Measures card alignment and border uniformity
-- **Grade Prediction**: Combines all factors to predict numerical grades (1-10 scale)
-- **Multiple Grading Standards**: Supports PSA and BGS grading company standards
+- **Identity** — player, year, set, card number, parallel/variation.
+- **Grade range** — a realistic condition estimate (e.g. "PSA 6–8") from your photo.
+- **Authenticity red flags** — warning signs like print pattern anomalies or trimmed edges.
+- **Verdict** — priced against live eBay comps: **undervalued**, **fair**, or **overpriced**.
 
-## Installation
+## How it works
+
+```
+┌────────────┐    ┌──────────────────┐    ┌───────────────┐    ┌─────────────┐
+│ Card photo │ ─▶ │ BYO-AI vision    │ ─▶ │ eBay comps    │ ─▶ │   Verdict   │
+│ (phone cam)│    │ (your API key)   │    │ (live search) │    │ under/fair/ │
+└────────────┘    │ identity + grade │    │ price stats   │    │ overpriced  │
+                  └──────────────────┘    └───────────────┘    └─────────────┘
+```
+
+1. You snap the card (front, optionally back) in the web app.
+2. The stateless API server forwards the photo to **your** AI provider for identification, grading, and authenticity checks.
+3. The server searches eBay for comparable listings and computes price statistics.
+4. You get a verdict comparing the listing price you entered against the comps.
+
+## Bring your own AI key
+
+There is no shared backend account and no markup. You paste your own API key in the app's settings:
+
+- Your key is stored **only in your browser** (localStorage) and sent **only to your provider** (relayed per-request by the stateless server, never logged or stored).
+- Supported providers: **Anthropic** and **OpenAI**.
+- Per-scan cost is billed to you by your provider — typically a few cents per scan.
+
+## Quick start
 
 ```bash
-# Clone the repository
-git clone https://github.com/SedaoAwana/SportsCardGrader.git
+git clone https://github.com/YOUR_USER/SportsCardGrader.git
 cd SportsCardGrader
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install the package
-pip install -e .
+make setup                # python venv + server deps, npm install for web
+cp .env.example .env      # optional — eBay credentials (see below)
+make dev                  # API on :8000, web app on :5173
 ```
 
-## Dependencies
+Open http://localhost:5173. The Vite dev server proxies `/api` to `http://localhost:8000` (configured in `web/vite.config.ts`), so no `VITE_API_URL` is needed in development. For production builds, set `VITE_API_URL` to your server's URL (see [DEPLOY.md](DEPLOY.md)).
 
-- **OpenCV** (opencv-python): For advanced image processing and computer vision
-- **NumPy**: For numerical computations
-- **Pillow**: For basic image handling
+The API server reads its config from environment variables; `make server` sources the repo-root `.env` automatically before starting uvicorn, so keep your `.env` at the repo root.
 
-## Usage
+Requirements: Python 3.12+, Node 22+.
 
-### Command Line Interface
+### eBay setup (optional)
+
+Create a free account at [developer.ebay.com](https://developer.ebay.com), create an app, and put its keys in `.env`:
+
+```
+EBAY_CLIENT_ID=your-client-id
+EBAY_CLIENT_SECRET=your-client-secret
+```
+
+Without them the app still works — scans just won't include market prices or a value verdict.
+
+## Honest limitations
+
+- **The grade is a range, not a certification.** It's an estimate from a phone photo. Surface flaws, print lines, and edge wear that graders catch under magnification may be invisible in your shot.
+- **Authenticity flags are warning signs only** — they are not proof either way. High-value cards deserve professional authentication.
+- **v1 prices come from active eBay listings** — asking prices, not sold prices. Asks skew high. (Sold-data API access is pending.)
+- **The verdict needs 3+ comparable raw listings**; with fewer, it honestly says "not enough data" instead of guessing.
+
+## Architecture
+
+- **`server/`** — FastAPI, fully stateless. BYO-AI passthrough (your key travels request → provider and is never persisted), eBay Browse API client, verdict logic. No database.
+- **`web/`** — Vite + React PWA. Camera capture, results, scan history. All state (settings, history) lives in localStorage — nothing leaves your device except the scan request itself.
+
+Design history and decisions: [`docs/plans/`](docs/plans/).
+
+## Testing
 
 ```bash
-# Analyze a single card image
-sports-card-grader analyze card.jpg
-
-# Analyze with detailed technical output
-sports-card-grader analyze card.jpg --detailed
-
-# Analyze all images in a directory
-sports-card-grader analyze /path/to/cards/ --directory
-
-# Output results in JSON format
-sports-card-grader analyze card.jpg --output json
-
-# Use different grading company standards
-sports-card-grader analyze card.jpg --company BGS
+make test
 ```
 
-### Python API
-
-```python
-from sports_card_grader import CardAnalyzer, GradingSystem
-
-# Initialize analyzer and grading system
-analyzer = CardAnalyzer()
-grader = GradingSystem()
-
-# Load and analyze a card image
-analyzer.load_image("path/to/card.jpg")
-analysis_results = analyzer.analyze_all()
-
-# Generate grading report
-report = grader.generate_detailed_report(analysis_results)
-
-print(f"Predicted Grade: {report['predicted_grade']}/10")
-print(f"Overall Score: {report['overall_score']}/100")
-```
-
-## Analysis Components
-
-### 1. Edge Quality (25% weight)
-- Detects edge smoothness and sharpness
-- Identifies potential wear or damage
-- Analyzes card boundary integrity
-
-### 2. Corner Assessment (30% weight)
-- Evaluates corner sharpness using Harris corner detection
-- Measures gradient strength around corners
-- Detects rounding or damage
-
-### 3. Surface Analysis (30% weight)
-- Identifies scratches and surface defects
-- Analyzes texture uniformity
-- Evaluates print quality and clarity
-
-### 4. Centering Evaluation (15% weight)
-- Measures card alignment within borders
-- Analyzes border uniformity
-- Detects off-center or miscut issues
-
-## Grading Scale
-
-| Grade | Score Range | Description |
-|-------|-------------|-------------|
-| 10    | 95-100      | Gem Mint    |
-| 9     | 85-94       | Mint        |
-| 8     | 75-84       | Near Mint-Mint |
-| 7     | 65-74       | Near Mint   |
-| 6     | 55-64       | Excellent-Near Mint |
-| 5     | 45-54       | Excellent   |
-| 4     | 35-44       | Very Good-Excellent |
-| 3     | 25-34       | Very Good   |
-| 2     | 15-24       | Good        |
-| 1     | 0-14        | Poor        |
-
-## Sample Output
-
-```
-🏆 SPORTS CARD GRADING ANALYSIS REPORT
-====================================
-
-📊 OVERALL GRADE: 9/10 (Mint)
-📈 Overall Score: 87.5/100
-🔍 Confidence Level: High
-
-📋 COMPONENT BREAKDOWN:
---------------------------------
-       Edges:  85.0/100 (Grade: 9/10, Weight:  25%)
-     Corners:  92.0/100 (Grade: 9/10, Weight:  30%)
-     Surface:  88.0/100 (Grade: 9/10, Weight:  30%)
-   Centering:  82.0/100 (Grade: 8/10, Weight:  15%)
-
-✅ STRENGTHS: Corners
-⚠️  AREAS FOR IMPROVEMENT: Centering
-
-💡 SUGGESTIONS:
-   • Card shows excellent quality across all criteria
-
-🏢 PSA STANDARDS COMPARISON:
-   Meets Gem Mint Standard: ❌ No
-   Meets Mint Standard: ✅ Yes
-```
-
-## Technical Implementation
-
-The system uses computer vision techniques including:
-
-- **Canny Edge Detection** for edge analysis
-- **Harris Corner Detection** for corner evaluation
-- **Morphological Operations** for surface defect detection
-- **Contour Analysis** for shape and centering assessment
-- **Gradient Analysis** for sharpness measurement
-
-## Development Status
-
-- ✅ Core analysis algorithms implemented
-- ✅ Grading system with weighted scoring
-- ✅ CLI interface
-- ✅ Multiple output formats
-- ✅ Grading company standards support
-- ✅ Comprehensive error handling
-- ⚠️ Currently includes fallback implementation for environments without OpenCV
-
-## Future Enhancements
-
-- Machine learning models for improved accuracy
-- Web interface for easy access
-- Batch processing capabilities
-- Historical grade tracking
-- Integration with grading company APIs
-- Mobile app development
+Server tests use mocked AI and eBay responses — no credentials or network needed, so CI is green for every contributor out of the box.
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+Contributions welcome — open an issue or PR. Please keep `make test` green.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Disclaimer
-
-This tool provides predictions based on image analysis and should not be considered a guarantee of professional grading results. Actual grades from professional grading companies may vary based on factors not detectable through image analysis alone.
+[MIT](LICENSE)
