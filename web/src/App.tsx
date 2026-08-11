@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { checkHealth } from './api'
+import { ApiError, checkHealth, scanCard } from './api'
+import ScanScreen from './screens/ScanScreen'
 import SettingsScreen from './screens/SettingsScreen'
-import { loadSettings } from './storage'
+import { loadSettings, pushHistory } from './storage'
 import type { ScanResponse } from './types'
 
 type View = 'scan' | 'results' | 'settings' | 'history'
@@ -9,10 +10,9 @@ type View = 'scan' | 'results' | 'settings' | 'history'
 function App() {
   // First run: no saved settings yet, force onboarding.
   const [view, setView] = useState<View>(() => (loadSettings() ? 'scan' : 'settings'))
-  // Setters land in Tasks 16-17 when scan/results views are implemented.
-  const [lastResult] = useState<ScanResponse | null>(null)
-  const [lastAskingPrice] = useState<number | null>(null)
-  const [busy] = useState(false)
+  const [lastResult, setLastResult] = useState<ScanResponse | null>(null)
+  const [lastAskingPrice, setLastAskingPrice] = useState<number | null>(null)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [serverDown, setServerDown] = useState(false)
 
@@ -21,6 +21,27 @@ function App() {
       if (!ok) setServerDown(true)
     })
   }, [])
+
+  async function handleScan(front: File, back: File | null, askingPrice: number | null) {
+    const settings = loadSettings()
+    if (!settings) {
+      setView('settings')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const response = await scanCard(front, back, askingPrice, settings)
+      pushHistory({ at: new Date().toISOString(), response, askingPrice: askingPrice ?? undefined })
+      setLastResult(response)
+      setLastAskingPrice(askingPrice)
+      setView('results')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Something went wrong. Try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div className="app">
@@ -42,15 +63,14 @@ function App() {
 
       {view === 'settings' && <SettingsScreen onDone={() => setView('scan')} />}
       {view === 'scan' && (
-        <div className="screen">
-          {busy && <p>Scanning…</p>}
+        <>
           {error && (
             <p role="alert">
               {error} <button onClick={() => setError(null)}>Dismiss</button>
             </p>
           )}
-          <p>coming soon</p>
-        </div>
+          <ScanScreen onSubmit={handleScan} busy={busy} />
+        </>
       )}
       {view === 'results' && (
         <div className="screen">
