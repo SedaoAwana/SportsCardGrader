@@ -15,7 +15,7 @@ from typing import Optional
 import httpx
 
 from app.schemas import VisionResult
-from app.vision.prompt import build_prompt, parse_vision_json
+from app.vision.prompt import VisionParseError, build_prompt, parse_vision_json
 
 
 class ProviderAuthError(Exception):
@@ -68,7 +68,10 @@ async def _call_anthropic(http: httpx.AsyncClient, front: bytes, front_type: str
               "messages": [{"role": "user", "content": content}]},
     )
     _raise_for_provider_status(resp)
-    return "".join(b.get("text", "") for b in resp.json()["content"] if b.get("type") == "text")
+    try:
+        return "".join(b.get("text", "") for b in resp.json()["content"] if b.get("type") == "text")
+    except (KeyError, IndexError, TypeError):
+        raise VisionParseError("Provider returned unexpected response shape")
 
 
 async def _call_openai(http: httpx.AsyncClient, front: bytes, front_type: str,
@@ -87,4 +90,7 @@ async def _call_openai(http: httpx.AsyncClient, front: bytes, front_type: str,
               "response_format": {"type": "json_object"}},
     )
     _raise_for_provider_status(resp)
-    return resp.json()["choices"][0]["message"]["content"]
+    try:
+        return resp.json()["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        raise VisionParseError("Provider returned unexpected response shape")
