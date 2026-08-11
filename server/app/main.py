@@ -12,6 +12,8 @@ from app.vision.providers import ProviderAuthError, ProviderRateLimited
 
 app = FastAPI(title="Card Scanner API", version="0.1.0")
 
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # public endpoint; phone photos are well under this
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # public, keyless API surface; the AI key is the user's own
@@ -42,9 +44,14 @@ async def scan(
     model = x_ai_model or (settings.anthropic_default_model if x_ai_provider == "anthropic"
                            else settings.openai_default_model)
     front_bytes = await front.read()
+    if len(front_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "Image too large (20MB max)")
     back_tuple = None
     if back is not None:
-        back_tuple = (await back.read(), back.content_type or "image/jpeg")
+        back_bytes = await back.read()
+        if len(back_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, "Image too large (20MB max)")
+        back_tuple = (back_bytes, back.content_type or "image/jpeg")
     # Only vision-path errors surface here; eBay failures become a partial
     # result (comps_error) inside perform_scan.
     try:

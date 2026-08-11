@@ -146,3 +146,15 @@ def test_missing_headers_is_422(client):
     resp = client.post("/api/scan",
         files={"front": ("card.jpg", io.BytesIO(b"fake"), "image/jpeg")})
     assert resp.status_code == 422
+
+
+def test_oversized_upload_is_413(client, monkeypatch):
+    from app.main import MAX_UPLOAD_BYTES
+
+    monkeypatch.setattr("app.main.MAX_UPLOAD_BYTES", 100)
+    resp = client.post(
+        "/api/scan",
+        files={"front": ("card.jpg", io.BytesIO(b"x" * 200), "image/jpeg")},
+        headers={"X-AI-Provider": "anthropic", "X-AI-Key": "k"},
+    )
+    assert resp.status_code == 413
