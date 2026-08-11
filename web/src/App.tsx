@@ -74,18 +74,14 @@ function App() {
           <ScanScreen onSubmit={handleScan} busy={busy} />
         </>
       )}
-      {view === 'results' &&
-        (lastResult ? (
-          <>
-            {lastAskingPrice != null && (
-              <p className="caption">Asking price: ${lastAskingPrice}</p>
-            )}
-            <ResultsScreen result={lastResult} onRescan={() => setView('scan')} />
-          </>
-        ) : (
-          // Nothing to show (e.g. deep refresh) — bounce back to scan.
-          <ScanScreen onSubmit={handleScan} busy={busy} />
-        ))}
+      {view === 'results' && lastResult && (
+        <>
+          {lastAskingPrice != null && (
+            <p className="caption">Asking price: ${lastAskingPrice}</p>
+          )}
+          <ResultsScreen result={lastResult} onRescan={() => setView('scan')} />
+        </>
+      )}
       {view === 'history' && (
         <HistoryScreen
           onSelect={e => {

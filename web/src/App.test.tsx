@@ -14,9 +14,10 @@ vi.mock('./api', async importOriginal => ({
   scanCard: mocks.scanCard,
 }))
 
-// jsdom does not implement URL.createObjectURL; the front-photo preview needs it.
+// jsdom does not implement object URLs; the front-photo preview creates and revokes them.
 beforeAll(() => {
   URL.createObjectURL = vi.fn(() => 'blob:mock')
+  URL.revokeObjectURL = vi.fn()
 })
 
 beforeEach(() => {
@@ -75,6 +76,15 @@ test('successful scan pushes history and switches to results', async () => {
   expect(screen.getByRole('button', { name: /scan another/i })).toBeDefined()
   expect(loadHistory()).toHaveLength(1)
   expect(mocks.scanCard).toHaveBeenCalledOnce()
+})
+
+test('submit without settings redirects to settings view', () => {
+  // No saved settings: App opens on settings; user navigates to scan anyway.
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'Scan' }))
+  pickFrontAndScan()
+  expect(screen.getByText(/bring your own ai/i)).toBeDefined()
+  expect(mocks.scanCard).not.toHaveBeenCalled()
 })
 
 test('failed scan shows dismissible error and stays on scan view', async () => {

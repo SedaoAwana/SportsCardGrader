@@ -2,9 +2,10 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { beforeAll, expect, test, vi } from 'vitest'
 import ScanScreen from './ScanScreen'
 
-// jsdom does not implement URL.createObjectURL; the preview <img> needs it.
+// jsdom does not implement object URLs; the preview <img> creates and revokes them.
 beforeAll(() => {
   URL.createObjectURL = vi.fn(() => 'blob:mock')
+  URL.revokeObjectURL = vi.fn()
 })
 
 test('scan button is disabled until a front photo is chosen', () => {

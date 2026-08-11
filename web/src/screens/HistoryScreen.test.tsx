@@ -33,6 +33,7 @@ test('renders a row and onSelect fires with the entry', () => {
   const onSelect = vi.fn()
   render(<HistoryScreen onSelect={onSelect} />)
   const row = screen.getByText(/Luka Doncic/)
+  expect(screen.getByText('Undervalued')).toBeTruthy() // human label, not raw enum
   fireEvent.click(row)
   expect(onSelect).toHaveBeenCalledOnce()
   expect(onSelect.mock.calls[0][0]).toEqual(entry)

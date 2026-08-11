@@ -1,3 +1,4 @@
+import { verdictLabels } from '../labels'
 import type { CompsSource, ScanResponse } from '../types'
 
 interface Props {
@@ -40,7 +41,7 @@ export default function ResultsScreen({ result, onRescan }: Props) {
           </p>
           {identity.variant && <p className="variant">{identity.variant}</p>}
           {identity.confidence < 0.5 && (
-            <p className="warning">Identification uncertain — verdict withheld</p>
+            <p className="warning">Identification uncertain — price may not be reliable</p>
           )}
         </section>
       )}
@@ -71,8 +72,8 @@ export default function ResultsScreen({ result, onRescan }: Props) {
           </h3>
           {condition.observations.length > 0 && (
             <ul>
-              {condition.observations.map(o => (
-                <li key={`${o.area}-${o.note}`}>
+              {condition.observations.map((o, i) => (
+                <li key={`${o.area}-${i}`}>
                   {o.area} — {o.severity}: {o.note}
                 </li>
               ))}
@@ -84,7 +85,7 @@ export default function ResultsScreen({ result, onRescan }: Props) {
       <section className="value">
         {verdict ? (
           <>
-            <span className={`verdict verdict-${verdict.verdict}`}>{verdict.verdict}</span>
+            <span className={`verdict verdict-${verdict.verdict}`}>{verdictLabels[verdict.verdict]}</span>
             {verdict.value_low != null && verdict.value_high != null && (
               <p className="range">
                 ${verdict.value_low}–${verdict.value_high}

@@ -59,5 +59,13 @@ test('low-confidence identity shows uncertainty warning', () => {
   const r = structuredClone(base)
   r.vision.identity!.confidence = 0.4
   render(<ResultsScreen result={r} onRescan={() => {}} />)
-  expect(screen.getByText(/identification uncertain/i)).toBeTruthy()
+  expect(screen.getByText(/identification uncertain — price may not be reliable/i)).toBeTruthy()
+})
+
+test('verdict badge shows human label, not raw enum value', () => {
+  const r = structuredClone(base)
+  r.verdict = { value_low: 60, value_high: 90, verdict: 'no_ask', reasoning: 'No asking price given.' }
+  render(<ResultsScreen result={r} onRescan={() => {}} />)
+  expect(screen.getByText('Value estimate')).toBeTruthy()
+  expect(screen.queryByText('no_ask')).toBeNull()
 })

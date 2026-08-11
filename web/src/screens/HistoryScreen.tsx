@@ -1,3 +1,4 @@
+import { verdictLabels } from '../labels'
 import { loadHistory } from '../storage'
 import type { HistoryEntry } from '../types'
 
@@ -19,17 +20,17 @@ export default function HistoryScreen({ onSelect }: Props) {
   return (
     <div className="screen">
       <ul className="history">
-        {history.map(entry => {
+        {history.map((entry, i) => {
           const verdict = entry.response.verdict
           return (
-            <li key={entry.at}>
+            <li key={`${entry.at}-${i}`}>
               <button className="history-row" onClick={() => onSelect(entry)}>
                 <span className="player">
                   {entry.response.vision.identity?.player ?? 'Unreadable photo'}
                 </span>
                 <span className="date">{new Date(entry.at).toLocaleDateString()}</span>
                 {verdict && (
-                  <span className={`verdict verdict-${verdict.verdict}`}>{verdict.verdict}</span>
+                  <span className={`verdict verdict-${verdict.verdict}`}>{verdictLabels[verdict.verdict]}</span>
                 )}
                 {entry.askingPrice != null && <span className="ask">${entry.askingPrice}</span>}
               </button>
