@@ -70,7 +70,9 @@ test('successful scan pushes history and switches to results', async () => {
   mocks.scanCard.mockResolvedValue(stubResponse)
   render(<App />)
   pickFrontAndScan()
-  await screen.findByText(/result ready/i)
+  // Real ResultsScreen: stubResponse has no verdict, so value is unavailable.
+  await screen.findByText(/market value unavailable/i)
+  expect(screen.getByRole('button', { name: /scan another/i })).toBeDefined()
   expect(loadHistory()).toHaveLength(1)
   expect(mocks.scanCard).toHaveBeenCalledOnce()
 })

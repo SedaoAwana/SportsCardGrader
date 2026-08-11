@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ApiError, checkHealth, scanCard } from './api'
+import HistoryScreen from './screens/HistoryScreen'
+import ResultsScreen from './screens/ResultsScreen'
 import ScanScreen from './screens/ScanScreen'
 import SettingsScreen from './screens/SettingsScreen'
 import { loadSettings, pushHistory } from './storage'
@@ -72,16 +74,26 @@ function App() {
           <ScanScreen onSubmit={handleScan} busy={busy} />
         </>
       )}
-      {view === 'results' && (
-        <div className="screen">
-          {/* Task 17 renders lastResult / lastAskingPrice here. */}
-          <p>{lastResult || lastAskingPrice != null ? 'Result ready' : 'coming soon'}</p>
-        </div>
-      )}
+      {view === 'results' &&
+        (lastResult ? (
+          <>
+            {lastAskingPrice != null && (
+              <p className="caption">Asking price: ${lastAskingPrice}</p>
+            )}
+            <ResultsScreen result={lastResult} onRescan={() => setView('scan')} />
+          </>
+        ) : (
+          // Nothing to show (e.g. deep refresh) — bounce back to scan.
+          <ScanScreen onSubmit={handleScan} busy={busy} />
+        ))}
       {view === 'history' && (
-        <div className="screen">
-          <p>coming soon</p>
-        </div>
+        <HistoryScreen
+          onSelect={e => {
+            setLastResult(e.response)
+            setLastAskingPrice(e.askingPrice ?? null)
+            setView('results')
+          }}
+        />
       )}
     </div>
   )
