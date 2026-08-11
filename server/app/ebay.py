@@ -41,7 +41,8 @@ class EbayClient:
         token = await self._get_token()
         resp = await self._http.get(
             "/buy/browse/v1/item_summary/search",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"Bearer {token}",
+                     "X-EBAY-C-MARKETPLACE-ID": "EBAY_US"},  # change for non-US deployments
             params={"q": query, "category_ids": SPORTS_CARDS_CATEGORY, "limit": limit},
         )
         resp.raise_for_status()
