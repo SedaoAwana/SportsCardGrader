@@ -1,0 +1,66 @@
+import pytest
+
+from app.vision.prompt import VisionParseError, build_prompt, parse_vision_json
+
+
+def test_prompt_mentions_psa_and_json():
+    p = build_prompt()
+    assert "PSA" in p and "JSON" in p and "photo_ok" in p
+
+
+def test_prompt_lists_psa_10_before_psa_1():
+    p = build_prompt()
+    assert p.index("PSA 10:") < p.index("PSA 1:")
+
+
+def test_parse_strips_code_fences():
+    raw = '```json\n{"photo_ok": false, "photo_issue": "blurry"}\n```'
+    r = parse_vision_json(raw)
+    assert r.photo_ok is False
+
+
+def test_parse_full_result():
+    raw = ('{"photo_ok": true, "identity": {"player": "Luka Doncic", "year": "2018", '
+           '"set_name": "Panini Prizm", "card_number": "280", "variant": null, '
+           '"search_string": "2018 Panini Prizm Luka Doncic #280", "confidence": 0.92}, '
+           '"condition": {"observations": [{"area": "corners", "severity": "minor", '
+           '"note": "slight fray top-left"}], "grade_low": 6, "grade_high": 8}, '
+           '"authenticity": {"red_flags": [], "risk": "low"}, "ai_value_note": null}')
+    r = parse_vision_json(raw)
+    assert r.identity.player == "Luka Doncic"
+    assert r.condition.grade_high == 8
+
+
+def test_parse_garbage_raises():
+    with pytest.raises(VisionParseError):
+        parse_vision_json("I think this is a nice card!")
+
+
+def test_parse_accepts_half_grades():
+    raw = ('{"photo_ok": true, "condition": {"observations": [], '
+           '"grade_low": 6.5, "grade_high": 8.5}}')
+    r = parse_vision_json(raw)
+    assert r.condition.grade_low == 6.5
+    assert r.condition.grade_high == 8.5
+
+
+def test_parse_ignores_extra_unknown_keys():
+    raw = ('{"photo_ok": true, "chatter": "sure, here you go!", '
+           '"identity": null, "confidence_notes": ["extra"], "ai_value_note": null}')
+    r = parse_vision_json(raw)
+    assert r.photo_ok is True
+
+
+def test_parse_photo_not_ok_fills_photo_issue():
+    r = parse_vision_json('{"photo_ok": false, "photo_issue": null}')
+    assert r.photo_ok is False
+    assert isinstance(r.photo_issue, str) and r.photo_issue
+
+
+def test_parse_tolerates_leading_prose_and_trailing_text():
+    raw = ('Here is the JSON:\n```json\n'
+           '{"photo_ok": false, "photo_issue": "glare"}\n'
+           '```\nLet me know if you need anything else!')
+    r = parse_vision_json(raw)
+    assert r.photo_ok is False
+    assert r.photo_issue == "glare"
