@@ -1,0 +1,70 @@
+import httpx
+import pytest
+
+from app.ebay import EbayClient
+
+
+def make_transport(token_calls: list | None = None, extra_items: list | None = None):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/identity/v1/oauth2/token":
+            if token_calls is not None:
+                token_calls.append(1)
+            return httpx.Response(200, json={"access_token": "tok", "expires_in": 7200})
+        if request.url.path == "/buy/browse/v1/item_summary/search":
+            assert request.headers["Authorization"] == "Bearer tok"
+            items = [
+                {"title": "Luka PSA 10", "price": {"value": "400.00"},
+                 "itemWebUrl": "https://ebay.com/itm/1"},
+                {"title": "Luka raw RC", "price": {"value": "60.00"},
+                 "itemWebUrl": "https://ebay.com/itm/2"},
+            ] + (extra_items or [])
+            return httpx.Response(200, json={"itemSummaries": items})
+        return httpx.Response(404)
+    return httpx.MockTransport(handler)
+
+
+async def test_search_returns_listings():
+    client = EbayClient("id", "secret", "production", transport=make_transport())
+    listings = await client.search("2018 Prizm Luka Doncic")
+    assert len(listings) == 2
+    assert listings[0].graded and listings[0].price == 400.0
+    assert not listings[1].graded
+
+
+async def test_search_raises_on_auth_failure():
+    def handler(request):
+        return httpx.Response(401, json={"error": "invalid_client"})
+    client = EbayClient("id", "bad", "production", transport=httpx.MockTransport(handler))
+    with pytest.raises(httpx.HTTPStatusError):
+        await client.search("anything")
+
+
+async def test_token_cached_across_searches():
+    token_calls: list = []
+    client = EbayClient("id", "secret", "production",
+                        transport=make_transport(token_calls=token_calls))
+    await client.search("first query")
+    await client.search("second query")
+    assert len(token_calls) == 1
+
+
+async def test_item_without_price_skipped():
+    extra = [{"title": "Luka no price", "itemWebUrl": "https://ebay.com/itm/3"}]
+    client = EbayClient("id", "secret", "production",
+                        transport=make_transport(extra_items=extra))
+    listings = await client.search("2018 Prizm Luka Doncic")
+    assert len(listings) == 2
+    assert all(l.title != "Luka no price" for l in listings)
+
+
+async def test_item_with_malformed_price_skipped():
+    extra = [
+        {"title": "Luka negative price", "price": {"value": "-5.00"},
+         "itemWebUrl": "https://ebay.com/itm/4"},
+        {"title": "Luka junk price", "price": {"value": "not-a-number"},
+         "itemWebUrl": "https://ebay.com/itm/5"},
+    ]
+    client = EbayClient("id", "secret", "production",
+                        transport=make_transport(extra_items=extra))
+    listings = await client.search("2018 Prizm Luka Doncic")
+    assert [l.title for l in listings] == ["Luka PSA 10", "Luka raw RC"]
