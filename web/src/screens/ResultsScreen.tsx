@@ -19,6 +19,7 @@ const sourceCaption: Record<CompsSource, string> = {
 function SoldCompsLink({ searchString }: { searchString: string }) {
   const href =
     `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(searchString)}` +
+    // _sacat=212: sports cards — keep in sync with SPORTS_CARDS_CATEGORY in server/app/ebay.py
     '&_sacat=212&LH_Sold=1&LH_Complete=1'
   return (
     <a className="sold-link" href={href} target="_blank" rel="noopener noreferrer">
@@ -110,7 +111,7 @@ export default function ResultsScreen({ result, onRescan }: Props) {
               <>
                 {/* The source caption above already says the estimate is ask-based;
                     this line only adds what solds are. Skip it when comps ARE solds. */}
-                {comps?.source !== 'sold' && (
+                {comps?.source === 'active_listings' && (
                   <p className="caption">Sold prices show what buyers actually paid.</p>
                 )}
                 <SoldCompsLink searchString={identity.search_string} />

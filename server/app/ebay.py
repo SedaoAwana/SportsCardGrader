@@ -9,7 +9,7 @@ from app.comps import is_graded
 from app.schemas import CompListing
 
 _BASES = {"production": "https://api.ebay.com", "sandbox": "https://api.sandbox.ebay.com"}
-SPORTS_CARDS_CATEGORY = "212"
+SPORTS_CARDS_CATEGORY = "212"  # keep in sync with _sacat in web ResultsScreen sold link
 
 
 class EbayClient:
