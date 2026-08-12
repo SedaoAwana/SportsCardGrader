@@ -14,6 +14,19 @@ const sourceCaption: Record<CompsSource, string> = {
   sold: 'based on eBay sold prices',
 }
 
+// Deep link to eBay's completed-and-sold search in the sports-cards category:
+// solds are ground truth on eBay, one tap away from our ask-based estimate.
+function SoldCompsLink({ searchString }: { searchString: string }) {
+  const href =
+    `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(searchString)}` +
+    '&_sacat=212&LH_Sold=1&LH_Complete=1'
+  return (
+    <a className="sold-link" href={href} target="_blank" rel="noopener noreferrer">
+      See sold comps on eBay <span aria-hidden="true">→</span>
+    </a>
+  )
+}
+
 export default function ResultsScreen({ result, onRescan }: Props) {
   const { vision, comps, comps_error, verdict } = result
 
@@ -93,6 +106,16 @@ export default function ResultsScreen({ result, onRescan }: Props) {
             )}
             <p>{verdict.reasoning}</p>
             {comps && <p className="caption">{sourceCaption[comps.source]}</p>}
+            {identity && (
+              <>
+                {/* The source caption above already says the estimate is ask-based;
+                    this line only adds what solds are. Skip it when comps ARE solds. */}
+                {comps?.source !== 'sold' && (
+                  <p className="caption">Sold prices show what buyers actually paid.</p>
+                )}
+                <SoldCompsLink searchString={identity.search_string} />
+              </>
+            )}
           </>
         ) : (
           <>
@@ -101,6 +124,7 @@ export default function ResultsScreen({ result, onRescan }: Props) {
             {ai_value_note && (
               <p className="caption">AI rough estimate (low confidence): {ai_value_note}</p>
             )}
+            {identity && <SoldCompsLink searchString={identity.search_string} />}
           </>
         )}
       </section>

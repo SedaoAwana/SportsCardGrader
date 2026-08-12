@@ -62,6 +62,43 @@ test('low-confidence identity shows uncertainty warning', () => {
   expect(screen.getByText(/identification uncertain — price may not be reliable/i)).toBeTruthy()
 })
 
+test('sold-comps link targets an eBay sold search with the encoded search string', () => {
+  render(<ResultsScreen result={base} onRescan={() => {}} />)
+  const link = screen.getByRole('link', { name: /see sold comps on ebay/i })
+  expect(link.getAttribute('href')).toBe(
+    'https://www.ebay.com/sch/i.html?_nkw=2018%20Panini%20Prizm%20Luka%20Doncic%20%23280&_sacat=212&LH_Sold=1&LH_Complete=1',
+  )
+  expect(link.getAttribute('href')).toContain('LH_Sold=1')
+  expect(link.getAttribute('target')).toBe('_blank')
+  expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+  // Asks-vs-solds distinction is explained when the estimate comes from asks.
+  expect(screen.getByText(/what buyers actually paid/i)).toBeTruthy()
+})
+
+test('sold-comps link still offered when comps failed', () => {
+  const r = { ...base, comps: null, verdict: null, comps_error: 'eBay down' }
+  render(<ResultsScreen result={r} onRescan={() => {}} />)
+  expect(screen.getByRole('link', { name: /see sold comps on ebay/i })).toBeTruthy()
+  // No estimate above to contrast against, so no asks-vs-solds caption.
+  expect(screen.queryByText(/what buyers actually paid/i)).toBeNull()
+})
+
+test('no sold-comps link without an identity (bad photo)', () => {
+  const r: ScanResponse = { vision: { photo_ok: false, photo_issue: 'too much glare',
+    identity: null, condition: null, authenticity: null, ai_value_note: null },
+    comps: null, comps_error: null, verdict: null }
+  render(<ResultsScreen result={r} onRescan={() => {}} />)
+  expect(screen.queryByRole('link', { name: /see sold comps on ebay/i })).toBeNull()
+})
+
+test('asks-vs-solds caption omitted when comps already come from solds', () => {
+  const r = structuredClone(base)
+  r.comps!.source = 'sold'
+  render(<ResultsScreen result={r} onRescan={() => {}} />)
+  expect(screen.getByRole('link', { name: /see sold comps on ebay/i })).toBeTruthy()
+  expect(screen.queryByText(/what buyers actually paid/i)).toBeNull()
+})
+
 test('verdict badge shows human label, not raw enum value', () => {
   const r = structuredClone(base)
   r.verdict = { value_low: 60, value_high: 90, verdict: 'no_ask', reasoning: 'No asking price given.' }
