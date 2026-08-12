@@ -64,7 +64,10 @@ async def _call_anthropic(http: httpx.AsyncClient, front: bytes, front_type: str
     resp = await http.post(
         "https://api.anthropic.com/v1/messages",
         headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
-        json={"model": model, "max_tokens": 2048,
+        # No `thinking` param: modern Claude models think by default and
+        # max_tokens caps thinking + response together, so leave headroom.
+        # An explicit disable would 400 on some models users may select.
+        json={"model": model, "max_tokens": 8192,
               "messages": [{"role": "user", "content": content}]},
     )
     _raise_for_provider_status(resp)
@@ -85,7 +88,9 @@ async def _call_openai(http: httpx.AsyncClient, front: bytes, front_type: str,
     resp = await http.post(
         "https://api.openai.com/v1/chat/completions",
         headers={"Authorization": f"Bearer {api_key}"},
-        json={"model": model, "max_tokens": 2048,
+        # max_completion_tokens (not max_tokens): required by current OpenAI
+        # chat-completions models; also covers their reasoning tokens.
+        json={"model": model, "max_completion_tokens": 8192,
               "messages": [{"role": "user", "content": content}],
               "response_format": {"type": "json_object"}},
     )
