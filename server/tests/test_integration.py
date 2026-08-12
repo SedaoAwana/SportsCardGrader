@@ -25,6 +25,7 @@ from app import scan as scan_module
 from app.config import Settings, get_settings
 from app.ebay import EbayClient
 from app.main import app
+from app.pricing import EbayActiveSource
 from app.schemas import CompsSummary, Condition
 from app.verdict import decide
 from app.vision.providers import analyze_card
@@ -77,12 +78,15 @@ def client(monkeypatch):
     monkeypatch.setattr(
         scan_module, "get_settings",
         lambda: Settings(_env_file=None, ebay_client_id="x", ebay_client_secret="y"))
-    scan_module._ebay_client = EbayClient("x", "y", "production",
-                                          transport=_ebay_transport())
+    # Real EbayActiveSource adapter; only its HTTP client rides the mock wire.
+    source = EbayActiveSource(Settings(_env_file=None, ebay_client_id="x",
+                                       ebay_client_secret="y"))
+    source._client = EbayClient("x", "y", "production", transport=_ebay_transport())
+    scan_module._pricing_source = source
     try:
         yield TestClient(app)
     finally:
-        scan_module._ebay_client = None
+        scan_module._pricing_source = None
         get_settings.cache_clear()
 
 

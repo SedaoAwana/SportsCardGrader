@@ -85,6 +85,9 @@ def test_search_comps_gate_without_credentials(client, monkeypatch):
     # Exercise the real search_comps() gate: empty creds -> RuntimeError -> comps_error.
     async def fake_vision(*a, **k): return GOOD_VISION
     monkeypatch.setattr(scan_module, "run_vision", fake_vision)
+    # Drop any singleton a previous test built, so the patched settings below
+    # actually drive the source this test claims to exercise.
+    monkeypatch.setattr(scan_module, "_pricing_source", None)
     monkeypatch.setattr(
         scan_module, "get_settings",
         lambda: Settings(_env_file=None, ebay_client_id="", ebay_client_secret=""))

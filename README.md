@@ -60,6 +60,10 @@ EBAY_CLIENT_SECRET=your-client-secret
 
 Without them the app still works — scans just won't include market prices or a value verdict.
 
+### Plugging in a sold-price source
+
+The free default prices against **active eBay listings** — asking prices, which skew high. If you have access to actual sold data (a price-guide service like PriceCharting/SportsCardsPro or Card Hedge, or your own CardLadder exports), you can swap it in without touching the pipeline: implement the small adapter interface in [`server/app/pricing.py`](server/app/pricing.py) — a `source_type` of `"sold"` plus one async `search(query)` returning comp listings — register it, and set `PRICING_SOURCE=your_source` in `.env`. The verdict wording and the app's captions automatically switch from "asking prices" to "sold prices". See the module docstring in `app/pricing.py` for the three-step walkthrough.
+
 ## Honest limitations
 
 - **The grade is a range, not a certification.** It's an estimate from a phone photo. Surface flaws, print lines, and edge wear that graders catch under magnification may be invisible in your shot.

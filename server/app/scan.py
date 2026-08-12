@@ -1,19 +1,26 @@
 """Scan orchestration: vision -> comps -> verdict, with partial results.
 
 Vision-path errors propagate to the endpoint (mapped to HTTP statuses);
-eBay/comps errors are swallowed into ScanResponse.comps_error so the user
+pricing/comps errors are swallowed into ScanResponse.comps_error so the user
 still gets the vision analysis they paid an AI call for.
 """
 from typing import Optional
 
 from app.comps import summarize
 from app.config import get_settings
-from app.ebay import EbayClient
+from app.pricing import PricingSource, get_pricing_source
 from app.schemas import CompListing, ScanResponse, VisionResult
 from app.verdict import decide
 from app.vision.providers import analyze_card
 
-_ebay_client: Optional[EbayClient] = None
+_pricing_source: Optional[PricingSource] = None
+
+
+def _get_pricing_source() -> PricingSource:
+    global _pricing_source
+    if _pricing_source is None:
+        _pricing_source = get_pricing_source(get_settings())
+    return _pricing_source
 
 
 async def run_vision(front: bytes, front_type: str, back: Optional[tuple[bytes, str]],
@@ -23,14 +30,7 @@ async def run_vision(front: bytes, front_type: str, back: Optional[tuple[bytes, 
 
 
 async def search_comps(query: str) -> list[CompListing]:
-    global _ebay_client
-    settings = get_settings()
-    if not settings.ebay_configured:
-        raise RuntimeError("eBay credentials not configured on this server")
-    if _ebay_client is None:
-        _ebay_client = EbayClient(settings.ebay_client_id, settings.ebay_client_secret,
-                                  settings.ebay_env)
-    return await _ebay_client.search(query)
+    return await _get_pricing_source().search(query)
 
 
 async def perform_scan(front: bytes, front_type: str, back: Optional[tuple[bytes, str]],
@@ -41,10 +41,13 @@ async def perform_scan(front: bytes, front_type: str, back: Optional[tuple[bytes
         return ScanResponse(vision=vision)
 
     try:
+        # Resolved inside the try so a misconfigured PRICING_SOURCE degrades to
+        # a self-diagnosing comps_error instead of a 500.
+        source_type = _get_pricing_source().source_type
         listings = await search_comps(vision.identity.search_string)
     except Exception as e:
         return ScanResponse(vision=vision, comps_error=str(e))
 
-    comps = summarize(listings, source="active_listings")
+    comps = summarize(listings, source=source_type)
     verdict = decide(comps, vision.condition, asking_price, vision.identity.confidence)
     return ScanResponse(vision=vision, comps=comps, verdict=verdict)

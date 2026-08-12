@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     ebay_client_id: str = ""
     ebay_client_secret: str = ""
     ebay_env: str = "production"  # or "sandbox"
+    pricing_source: str = "ebay_active"  # registry key in app/pricing.py
     anthropic_default_model: str = "claude-sonnet-5"
     openai_default_model: str = "gpt-5.1"
 
