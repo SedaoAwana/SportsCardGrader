@@ -57,6 +57,8 @@ class CompListing(BaseModel):
 class CompsSummary(BaseModel):
     source: Literal["active_listings", "sold"]
     raw_count: int = Field(ge=0)
+    # *_low are robust lows (trimmed floors from comps._robust_low), not the
+    # absolute cheapest listing — a lone $0.99 outlier never sets the floor.
     raw_low: Optional[float] = None
     raw_median: Optional[float] = None
     graded_count: int = Field(ge=0)

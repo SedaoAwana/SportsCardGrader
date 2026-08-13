@@ -12,6 +12,9 @@ def make_transport(token_calls: list | None = None, extra_items: list | None = N
             return httpx.Response(200, json={"access_token": "tok", "expires_in": 7200})
         if request.url.path == "/buy/browse/v1/item_summary/search":
             assert request.headers["Authorization"] == "Bearer tok"
+            # Browse API: sort=price is ascending by price; without it eBay
+            # returns Best Match, so the cheapest listings may not appear at all.
+            assert request.url.params["sort"] == "price"
             items = [
                 {"title": "Luka PSA 10", "price": {"value": "400.00"},
                  "itemWebUrl": "https://ebay.com/itm/1"},

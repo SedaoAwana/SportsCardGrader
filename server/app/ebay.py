@@ -43,7 +43,11 @@ class EbayClient:
             "/buy/browse/v1/item_summary/search",
             headers={"Authorization": f"Bearer {token}",
                      "X-EBAY-C-MARKETPLACE-ID": "EBAY_US"},  # change for non-US deployments
-            params={"q": query, "category_ids": SPORTS_CARDS_CATEGORY, "limit": limit},
+            # sort=price → ascending by price (Browse API; "-price" would be
+            # descending). Without it eBay returns Best Match ordering, and
+            # the cheapest true comps may never appear in the first `limit`.
+            params={"q": query, "category_ids": SPORTS_CARDS_CATEGORY,
+                    "limit": limit, "sort": "price"},
         )
         resp.raise_for_status()
         items = resp.json().get("itemSummaries", [])

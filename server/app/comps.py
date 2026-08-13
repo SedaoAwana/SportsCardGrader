@@ -1,3 +1,4 @@
+import math
 import re
 import statistics
 
@@ -13,18 +14,78 @@ _GRADED_RE = re.compile(
     re.I,
 )
 
+# Titles that indicate the listing is not a single authentic copy of the card:
+# reprints/customs, multi-card lots, box breaks, pick-your-card menus, damaged
+# copies, stickers. Matched case-insensitively with word boundaries so player
+# and team names ("Lottery Pick", "Charlotte") never trip the filter.
+# Contributions welcome — keep additions conservative: a false positive here
+# silently drops a real comp and skews the value range.
+_JUNK_PATTERNS = (
+    r"\breprint\b",
+    r"\brp\b",
+    r"\bcustom\b",
+    r"\bnovelty\b",
+    r"\bproxy\b",
+    r"\breplica\b",
+    r"\bfacsimile\b",
+    r"\bart\s+card\b",
+    r"\baceo\b",
+    r"\bdigital\b",
+    r"\blot\b",        # covers "lot of 10", "(lot)"; \b keeps "Lottery" safe
+    r"\bbreak\b",
+    r"\byou\s+pick\b",
+    r"\bu\s+pick\b",
+    r"\bchoose\b",
+    r"\bpick\s+your\b",
+    r"\bdamaged\b",
+    r"\bsticker\b",
+    r"\bdecal\b",
+)
+_JUNK_RE = re.compile("|".join(_JUNK_PATTERNS), re.I)
+
+
 def is_graded(title: str) -> bool:
     return bool(_GRADED_RE.search(title))
 
+
+def is_junk(title: str) -> bool:
+    """True when the title marks a listing that must not price this card."""
+    return bool(_JUNK_RE.search(title))
+
+
+def _robust_low(prices: list[float]) -> float | None:
+    """Trimmed floor for a sorted price list — the 'low' a buyer can trust.
+
+    A single mispriced or junk listing must never set the value floor, so:
+      - 8+ prices: 10th percentile by nearest-rank, clamped to at least the
+        second-lowest so one outlier can never be the floor;
+      - 4-7 prices: second-lowest;
+      - 1-3 prices: minimum (too few points to trim anything).
+    """
+    if not prices:
+        return None
+    n = len(prices)
+    if n >= 8:
+        rank = max(2, math.ceil(0.10 * n))
+        return prices[rank - 1]
+    if n >= 4:
+        return prices[1]
+    return prices[0]
+
+
 def summarize(listings: list[CompListing], source: str) -> CompsSummary:
-    raw = sorted(l.price for l in listings if not l.graded)
-    graded = sorted(l.price for l in listings if l.graded)
+    # Junk is dropped before bucketing so counts, lows, and medians all
+    # reflect only plausible comps (a graded lot is junk too).
+    kept = [l for l in listings if not is_junk(l.title)]
+    raw = sorted(l.price for l in kept if not l.graded)
+    graded = sorted(l.price for l in kept if l.graded)
     return CompsSummary(
         source=source,
         raw_count=len(raw),
-        raw_low=raw[0] if raw else None,
+        # *_low fields are robust lows (trimmed floors), not absolute minimums.
+        raw_low=_robust_low(raw),
         raw_median=statistics.median(raw) if raw else None,
         graded_count=len(graded),
-        graded_low=graded[0] if graded else None,
+        graded_low=_robust_low(graded),
         graded_median=statistics.median(graded) if graded else None,
     )

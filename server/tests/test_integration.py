@@ -7,10 +7,11 @@ verdict math all run. Only the network is replaced.
 
 Fixture arithmetic (ebay_luka_search.json):
   - 10 items; one has no "price" and one has a negative price -> both skipped -> 8 listings
-  - raw prices (5):   45.00, 55.00, 62.50, 74.99, 89.00 -> low 45.0, median 62.5
-  - graded prices (3): 150.00, 210.00, 400.00           -> low 150.0, median 210.0
-  - verdict range: value_low 45.0, value_high 62.5
-  - undervalued threshold: 0.7 * 45.0 = 31.50  (ask 30 -> undervalued)
+  - raw prices (5):   45.00, 55.00, 62.50, 74.99, 89.00
+      -> robust low 55.0 (trimmed floor: second-lowest for 4-7 comps), median 62.5
+  - graded prices (3): 150.00, 210.00, 400.00 -> low 150.0 (min for <=3), median 210.0
+  - verdict range: value_low 55.0, value_high 62.5
+  - undervalued threshold: 0.7 * 55.0 = 38.50  (ask 30 -> undervalued)
   - overpriced threshold:  1.2 * 62.5 = 75.00  (ask 60 -> fair, ask 80 -> overpriced)
 """
 import io
@@ -37,7 +38,7 @@ EBAY_BODY = json.loads((FIXTURES / "ebay_luka_search.json").read_text())
 # Hand-computed goldens from the fixture (see module docstring).
 EXPECTED_RAW_COUNT = 5
 EXPECTED_GRADED_COUNT = 3
-EXPECTED_RAW_LOW = 45.0
+EXPECTED_RAW_LOW = 55.0  # robust low: second-lowest of the 5 raw comps
 EXPECTED_RAW_MEDIAN = 62.5
 EXPECTED_GRADED_LOW = 150.0
 EXPECTED_GRADED_MEDIAN = 210.0
@@ -124,14 +125,14 @@ def test_scan_end_to_end_undervalued(client):
     assert comps["graded_median"] == EXPECTED_GRADED_MEDIAN
 
     verdict = body["verdict"]
-    assert verdict["verdict"] == "undervalued"               # 30 <= 0.7 * 45 = 31.5
+    assert verdict["verdict"] == "undervalued"               # 30 <= 0.7 * 55 = 38.5
     assert verdict["value_low"] == EXPECTED_RAW_LOW
     assert verdict["value_high"] == EXPECTED_RAW_MEDIAN
     assert verdict["reasoning"]
 
 
 @pytest.mark.parametrize("asking_price,expected", [
-    ("60", "fair"),        # 31.5 < 60 < 75.0
+    ("60", "fair"),        # 38.5 < 60 < 75.0
     ("80", "overpriced"),  # 80 >= 1.2 * 62.5 = 75.0
 ])
 def test_scan_end_to_end_fair_and_overpriced(client, asking_price, expected):

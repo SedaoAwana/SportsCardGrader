@@ -1,4 +1,4 @@
-from app.comps import summarize, is_graded
+from app.comps import summarize, is_graded, is_junk
 from app.schemas import CompListing
 
 def L(title, price):
@@ -34,3 +34,78 @@ def test_summarize_buckets_and_medians():
 def test_summarize_empty():
     s = summarize([], source="active_listings")
     assert s.raw_count == 0 and s.raw_low is None
+
+# --- junk filter -------------------------------------------------------------
+
+def test_is_junk_matches_obvious_junk():
+    assert is_junk("Luka Doncic Prizm RC REPRINT")
+    assert is_junk("Luka Doncic rookie RP mint")
+    assert is_junk("Luka Doncic custom art card")
+    assert is_junk("Luka Doncic novelty card")
+    assert is_junk("Luka Doncic proxy")
+    assert is_junk("Luka Doncic replica rookie")
+    assert is_junk("Luka Doncic facsimile auto")
+    assert is_junk("Luka Doncic ACEO rookie")
+    assert is_junk("Luka Doncic digital card")
+    assert is_junk("Luka Doncic lot of 10")
+    assert is_junk("Luka Doncic rookie (lot)")
+    assert is_junk("2018 Prizm basketball box BREAK Luka")
+    assert is_junk("Luka Doncic you pick")
+    assert is_junk("Luka Doncic u pick your card")
+    assert is_junk("Luka Doncic choose your card")
+    assert is_junk("Luka Doncic pick your player")
+    assert is_junk("Luka Doncic rookie damaged corner")
+    assert is_junk("Luka Doncic sticker card")
+    assert is_junk("Luka Doncic decal")
+
+def test_is_junk_word_boundary_safety():
+    # "Lottery" must not trip \blot\b, "Grpahic"-style substrings must not
+    # trip \brp\b, and clean titles stay clean.
+    assert not is_junk("Zach LaVine Lottery Pick insert")
+    assert not is_junk("2018 Prizm Luka Doncic RC #280")
+    assert not is_junk("Luka Doncic Prizm Rookie Sharp Corners")
+    assert not is_junk("Luka Doncic Charlotte Hornets")   # "rlot" is not \blot\b
+
+def test_summarize_drops_junk_from_both_buckets():
+    listings = [L("Luka raw", 40), L("Luka raw RC", 60), L("Luka RC nice", 80),
+                L("Luka Doncic REPRINT", 2.99),           # junk raw
+                L("Luka Doncic lot of 10 PSA 9", 25),     # junk graded
+                L("Luka PSA 10", 400), L("Luka PSA 9", 150)]
+    s = summarize(listings, source="active_listings")
+    assert (s.raw_count, s.raw_low, s.raw_median) == (3, 40, 60)
+    assert (s.graded_count, s.graded_low) == (2, 150)
+
+def test_summarize_keeps_lottery_title_raw():
+    listings = [L("Zach LaVine Lottery Pick insert", 20),
+                L("Zach LaVine base", 30), L("Zach LaVine RC", 40)]
+    s = summarize(listings, source="active_listings")
+    assert s.raw_count == 3 and s.raw_low == 20
+
+# --- robust (trimmed) floor --------------------------------------------------
+
+def test_raw_low_trims_outlier_with_ten_listings():
+    # One $0.99 junk-priced (but clean-titled) listing must not set the floor.
+    prices = [0.99, 40, 42, 44, 46, 48, 50, 52, 54, 56]
+    s = summarize([L(f"Luka raw #{i}", p) for i, p in enumerate(prices)],
+                  source="active_listings")
+    assert s.raw_count == 10
+    assert s.raw_low == 40  # 10th-percentile (nearest-rank) value, not 0.99
+
+def test_raw_low_second_lowest_with_five_listings():
+    prices = [5, 40, 45, 50, 55]
+    s = summarize([L(f"Luka raw #{i}", p) for i, p in enumerate(prices)],
+                  source="active_listings")
+    assert s.raw_low == 40
+
+def test_raw_low_min_with_three_listings():
+    prices = [30, 40, 50]
+    s = summarize([L(f"Luka raw #{i}", p) for i, p in enumerate(prices)],
+                  source="active_listings")
+    assert s.raw_low == 30
+
+def test_graded_low_uses_same_trimmed_floor():
+    prices = [9.99, 150, 160, 170, 180]
+    s = summarize([L(f"Luka PSA 10 #{i}", p) for i, p in enumerate(prices)],
+                  source="active_listings")
+    assert s.graded_count == 5
+    assert s.graded_low == 150  # second-lowest for 4-7 listings
