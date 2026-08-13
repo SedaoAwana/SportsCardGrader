@@ -37,7 +37,12 @@ class EbayClient:
         self._token_expiry = time.monotonic() + payload.get("expires_in", 7200)
         return self._token
 
-    async def search(self, query: str, limit: int = 50) -> list[CompListing]:
+    # 200 is the Browse API's max page size. With sort=price we sample the
+    # cheapest `limit` matches, so a bigger page keeps raw_median from being
+    # the median of only the cheap tail. Residual bias remains for cards with
+    # >200 active listings; the fix (two calls: Best Match for the median,
+    # price-asc for the floor) is deliberately deferred.
+    async def search(self, query: str, limit: int = 200) -> list[CompListing]:
         token = await self._get_token()
         resp = await self._http.get(
             "/buy/browse/v1/item_summary/search",

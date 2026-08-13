@@ -15,6 +15,9 @@ def make_transport(token_calls: list | None = None, extra_items: list | None = N
             # Browse API: sort=price is ascending by price; without it eBay
             # returns Best Match, so the cheapest listings may not appear at all.
             assert request.url.params["sort"] == "price"
+            # Max page size (200) so the median isn't computed from only the
+            # cheapest tail of a high-volume card's listings.
+            assert request.url.params["limit"] == "200"
             items = [
                 {"title": "Luka PSA 10", "price": {"value": "400.00"},
                  "itemWebUrl": "https://ebay.com/itm/1"},

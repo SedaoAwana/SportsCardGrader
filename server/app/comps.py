@@ -18,16 +18,20 @@ _GRADED_RE = re.compile(
 # reprints/customs, multi-card lots, box breaks, pick-your-card menus, damaged
 # copies, stickers. Matched case-insensitively with word boundaries so player
 # and team names ("Lottery Pick", "Charlotte") never trip the filter.
+# Only unambiguous nouns are pluralized; `lot`, `custom`, `sticker`, `break`
+# stay singular because their plurals have legitimate uses ("customs card",
+# "breaks records") — so "customs" passing through is accepted collateral.
 # Contributions welcome — keep additions conservative: a false positive here
 # silently drops a real comp and skews the value range.
 _JUNK_PATTERNS = (
-    r"\breprint\b",
-    r"\brp\b",
+    r"\breprints?\b",
+    r"\brp\b",         # dropping the odd "RP" relief-pitcher title is the
+                       # deliberate fail-safe direction (junk in raw is worse)
     r"\bcustom\b",
-    r"\bnovelty\b",
-    r"\bproxy\b",
-    r"\breplica\b",
-    r"\bfacsimile\b",
+    r"\bnovelt(?:y|ies)\b",
+    r"\bprox(?:y|ies)\b",
+    r"\breplicas?\b",
+    r"\bfacsimiles?\b",
     r"\bart\s+card\b",
     r"\baceo\b",
     r"\bdigital\b",
@@ -39,7 +43,7 @@ _JUNK_PATTERNS = (
     r"\bpick\s+your\b",
     r"\bdamaged\b",
     r"\bsticker\b",
-    r"\bdecal\b",
+    r"\bdecals?\b",
 )
 _JUNK_RE = re.compile("|".join(_JUNK_PATTERNS), re.I)
 
@@ -73,6 +77,23 @@ def _robust_low(prices: list[float]) -> float | None:
     return prices[0]
 
 
+def _floor(bucket: list[float]) -> float | None:
+    """Value floor for a sorted price bucket, resistant to cheap-junk floods.
+
+    The percentile trim in _robust_low is defeated when >= ~10% of the bucket
+    is clean-titled cheap junk (fresh $0.99 auctions are exactly this), so the
+    floor is computed from prices at or above 30% of the bucket median. If
+    that leaves fewer than 2 candidates (only possible for tiny buckets), fall
+    back to the whole bucket.
+    """
+    if not bucket:
+        return None
+    candidates = [p for p in bucket if p >= 0.3 * statistics.median(bucket)]
+    if len(candidates) < 2:
+        candidates = bucket
+    return _robust_low(candidates)
+
+
 def summarize(listings: list[CompListing], source: str) -> CompsSummary:
     # Junk is dropped before bucketing so counts, lows, and medians all
     # reflect only plausible comps (a graded lot is junk too).
@@ -83,9 +104,9 @@ def summarize(listings: list[CompListing], source: str) -> CompsSummary:
         source=source,
         raw_count=len(raw),
         # *_low fields are robust lows (trimmed floors), not absolute minimums.
-        raw_low=_robust_low(raw),
+        raw_low=_floor(raw),
         raw_median=statistics.median(raw) if raw else None,
         graded_count=len(graded),
-        graded_low=_robust_low(graded),
+        graded_low=_floor(graded),
         graded_median=statistics.median(graded) if graded else None,
     )
