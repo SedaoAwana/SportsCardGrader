@@ -49,5 +49,6 @@ async def perform_scan(front: bytes, front_type: str, back: Optional[tuple[bytes
         return ScanResponse(vision=vision, comps_error=str(e))
 
     comps = summarize(listings, source=source_type)
-    verdict = decide(comps, vision.condition, asking_price, vision.identity.confidence)
+    verdict = decide(comps, vision.condition, asking_price, vision.identity.confidence,
+                     authenticity=vision.authenticity)
     return ScanResponse(vision=vision, comps=comps, verdict=verdict)

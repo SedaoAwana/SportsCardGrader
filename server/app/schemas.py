@@ -68,7 +68,8 @@ class CompsSummary(BaseModel):
 class Verdict(BaseModel):
     value_low: Optional[float] = None
     value_high: Optional[float] = None
-    verdict: Literal["undervalued", "fair", "overpriced", "no_ask", "not_enough_data"]
+    verdict: Literal["undervalued", "fair", "overpriced", "no_ask", "not_enough_data",
+                     "authenticity_risk", "low_value", "high_value"]
     reasoning: str
 
 class ScanResponse(BaseModel):

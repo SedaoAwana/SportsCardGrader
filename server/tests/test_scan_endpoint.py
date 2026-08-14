@@ -49,6 +49,20 @@ def test_full_scan_happy_path(client, monkeypatch):
     assert body["verdict"]["verdict"] == "undervalued"
 
 
+def test_high_authenticity_risk_vetoes_price_verdict(client, monkeypatch):
+    # End-to-end trust check: a likely counterfeit with a bargain ask must
+    # surface authenticity_risk, never "undervalued".
+    risky = GOOD_VISION.model_copy(update={
+        "authenticity": Authenticity(red_flags=["print pattern looks off"], risk="high")})
+    async def fake_vision(*a, **k): return risky
+    async def fake_search(q): return LISTINGS
+    monkeypatch.setattr(scan_module, "run_vision", fake_vision)
+    monkeypatch.setattr(scan_module, "search_comps", fake_search)
+    body = post_scan(client, asking_price="30").json()
+    assert body["verdict"]["verdict"] == "authenticity_risk"
+    assert body["verdict"]["value_low"] is not None
+
+
 def test_bad_photo_short_circuits(client, monkeypatch):
     async def fake_vision(*a, **k):
         return VisionResult(photo_ok=False, photo_issue="too much glare")
