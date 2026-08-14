@@ -61,7 +61,15 @@ export interface CompsSummary {
   graded_median: number | null
 }
 
-export type VerdictLabel = 'undervalued' | 'fair' | 'overpriced' | 'no_ask' | 'not_enough_data'
+export type VerdictLabel =
+  | 'undervalued'
+  | 'fair'
+  | 'overpriced'
+  | 'no_ask'
+  | 'not_enough_data'
+  | 'authenticity_risk'
+  | 'low_value'
+  | 'high_value'
 
 export interface Verdict {
   value_low: number | null

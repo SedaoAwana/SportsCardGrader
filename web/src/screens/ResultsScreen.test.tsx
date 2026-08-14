@@ -106,3 +106,33 @@ test('verdict badge shows human label, not raw enum value', () => {
   expect(screen.getByText('Value estimate')).toBeTruthy()
   expect(screen.queryByText('no_ask')).toBeNull()
 })
+
+test('authenticity_risk verdict renders caution badge alongside the risk banner', () => {
+  const r = structuredClone(base)
+  r.vision.authenticity = { red_flags: ['print pattern looks off'], risk: 'high' }
+  r.verdict = { value_low: 60, value_high: 90, verdict: 'authenticity_risk',
+                reasoning: 'Counterfeit red flags detected.' }
+  render(<ResultsScreen result={r} onRescan={() => {}} />)
+  const badge = screen.getByText('Caution: authenticity')
+  expect(badge.className).toContain('verdict-authenticity_risk')
+  // Existing red risk banner still shows its detail — badge and banner agree.
+  expect(screen.getByText(/print pattern looks off/)).toBeTruthy()
+})
+
+test('low_value verdict renders "too cheap to call" badge', () => {
+  const r = structuredClone(base)
+  r.verdict = { value_low: 5, value_high: 8, verdict: 'low_value',
+                reasoning: 'Commodity-priced card.' }
+  render(<ResultsScreen result={r} onRescan={() => {}} />)
+  const badge = screen.getByText('Too cheap to call')
+  expect(badge.className).toContain('verdict-low_value')
+})
+
+test('high_value verdict renders "verify first" badge', () => {
+  const r = structuredClone(base)
+  r.verdict = { value_low: 800, value_high: 1500, verdict: 'high_value',
+                reasoning: 'High-value card — estimate only.' }
+  render(<ResultsScreen result={r} onRescan={() => {}} />)
+  const badge = screen.getByText('High value — verify first')
+  expect(badge.className).toContain('verdict-high_value')
+})

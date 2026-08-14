@@ -235,12 +235,26 @@ button:focus-visible {
 
 .verdict-fair,
 .verdict-no_ask,
-.verdict-not_enough_data {
+.verdict-not_enough_data,
+.verdict-low_value {
   background: var(--verdict-gray);
 }
 
 .verdict-overpriced {
   background: var(--verdict-red);
+}
+
+/* Guardrail verdicts use the tint pairs (own text color, not white-on-fill)
+   so they read as warnings, distinct from the solid price-call badges. */
+.verdict-authenticity_risk {
+  /* Same red family as the risk-high banner — badge and banner agree. */
+  background: var(--tint-red-bg);
+  color: var(--tint-red-text);
+}
+
+.verdict-high_value {
+  background: var(--tint-amber-bg);
+  color: var(--tint-amber-text);
 }
 
 /* Risk banners: full-width rounded, tinted */

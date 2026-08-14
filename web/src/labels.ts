@@ -7,4 +7,7 @@ export const verdictLabels: Record<VerdictLabel, string> = {
   overpriced: 'Overpriced',
   no_ask: 'Value estimate',
   not_enough_data: 'Not enough data',
+  authenticity_risk: 'Caution: authenticity',
+  low_value: 'Too cheap to call',
+  high_value: 'High value — verify first',
 }
