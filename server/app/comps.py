@@ -94,19 +94,32 @@ def _floor(bucket: list[float]) -> float | None:
     return _robust_low(candidates)
 
 
+def _clamp_to_median(low: float | None, median: float | None) -> float | None:
+    """A robust low above its own median is a floor artifact, not a floor."""
+    if low is None or median is None:
+        return low
+    return min(low, median)
+
+
 def summarize(listings: list[CompListing], source: str) -> CompsSummary:
     # Junk is dropped before bucketing so counts, lows, and medians all
     # reflect only plausible comps (a graded lot is junk too).
     kept = [l for l in listings if not is_junk(l.title)]
     raw = sorted(l.price for l in kept if not l.graded)
     graded = sorted(l.price for l in kept if l.graded)
+    # *_low fields are robust lows (trimmed floors), not absolute minimums.
+    # In bimodal buckets (half junk-cheap, half real) the 30%-of-median flood
+    # guard can push the floor above a median that straddles both modes, so
+    # each low is clamped to its median — a range must never read $50–$26.
+    raw_low = _clamp_to_median(_floor(raw), statistics.median(raw) if raw else None)
+    graded_low = _clamp_to_median(_floor(graded),
+                                  statistics.median(graded) if graded else None)
     return CompsSummary(
         source=source,
         raw_count=len(raw),
-        # *_low fields are robust lows (trimmed floors), not absolute minimums.
-        raw_low=_floor(raw),
+        raw_low=raw_low,
         raw_median=statistics.median(raw) if raw else None,
         graded_count=len(graded),
-        graded_low=_floor(graded),
+        graded_low=graded_low,
         graded_median=statistics.median(graded) if graded else None,
     )

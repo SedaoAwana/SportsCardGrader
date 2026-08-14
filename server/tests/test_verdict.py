@@ -145,6 +145,22 @@ def test_caution_keeps_label_but_annotates_reasoning():
     assert "authenticity flags" in v.reasoning
 
 
+def test_caution_note_survives_low_value_gate():
+    # The caveat must be appended before the stakes gates return early —
+    # a cheap card with authenticity flags still has to mention them.
+    v = decide(comps(raw_low=5.0, raw_median=8.0), cond(), 1.0, 0.9,
+               authenticity=auth("caution", ["odd gloss"]))
+    assert v.verdict == "low_value"
+    assert "authenticity flags" in v.reasoning
+
+
+def test_caution_note_survives_high_value_gate():
+    v = decide(comps(raw_low=800.0, raw_median=1500.0), cond(), None, 0.9,
+               authenticity=auth("caution", ["odd gloss"]))
+    assert v.verdict == "high_value"
+    assert "authenticity flags" in v.reasoning
+
+
 def test_low_risk_behaves_exactly_as_no_authenticity():
     with_low = decide(comps(), cond(), 30.0, 0.9, authenticity=auth("low"))
     without = decide(comps(), cond(), 30.0, 0.9)

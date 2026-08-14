@@ -8,9 +8,11 @@ Gate order (each returns early):
   2. raw-comp sufficiency         -> not_enough_data
   3. authenticity veto (high)     -> authenticity_risk (range kept as context)
   4. condition weighting          -> heavy wear tightens value_high (no early return)
-  5. low-stakes guardrail         -> low_value  (commodity-priced card)
-  6. high-stakes guardrail        -> high_value (authentication territory)
-  7. caution caveat               -> reasoning note only (no early return)
+  5. caution caveat               -> reasoning note only (no early return; sits
+                                     before the stakes gates so their early
+                                     returns still carry the note)
+  6. low-stakes guardrail         -> low_value  (commodity-priced card)
+  7. high-stakes guardrail        -> high_value (authentication territory)
   8. ask comparison               -> undervalued / fair / overpriced / no_ask
 """
 from typing import Optional
@@ -79,6 +81,12 @@ def decide(comps: CompsSummary, condition: Condition,
             f"graded copies start around ${comps.graded_low:.0f}."
         )
 
+    # Appended before the stakes gates so every priced verdict — including
+    # low_value/high_value early returns — carries the caveat.
+    if authenticity is not None and authenticity.risk == "caution":
+        reasoning += (" Note: minor authenticity flags were spotted — "
+                      "inspect closely.")
+
     # Stakes guardrails: at the extremes an under/fair/over call is either
     # meaningless (commodity cards) or irresponsible (authentication territory).
     if comps.raw_median < LOW_VALUE_FLOOR:
@@ -97,10 +105,6 @@ def decide(comps: CompsSummary, condition: Condition,
                       "authentication and grading are strongly recommended "
                       "before any transaction at this level.",
         )
-
-    if authenticity is not None and authenticity.risk == "caution":
-        reasoning += (" Note: minor authenticity flags were spotted — "
-                      "inspect closely.")
 
     if asking_price is None:
         return Verdict(value_low=value_low, value_high=value_high,

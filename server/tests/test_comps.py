@@ -125,18 +125,22 @@ def test_raw_low_min_with_three_listings():
 
 def test_raw_low_resists_cheap_junk_flood():
     # Five clean-titled $0.99 auctions (fresh listings) outnumber the trim:
-    # the floor must come from the >= 30%-of-median population, not $0.99.
+    # the guard computes the floor from the >= 30%-of-median population (58),
+    # but with half the bucket junk the median (27.995) straddles both modes,
+    # so the inversion clamp caps the low at the median. Never $0.99 either way.
     prices = [0.99, 0.99, 0.99, 0.99, 0.99, 55, 58, 60, 62, 65]
     s = summarize([L(f"Luka raw #{i}", p) for i, p in enumerate(prices)],
                   source="active_listings")
     assert s.raw_count == 10
-    assert s.raw_low == 58  # second-lowest of the 5 floor candidates >= 0.3*median
+    assert s.raw_low == s.raw_median  # guard floor clamped to the median
+    assert s.raw_low > 0.99
 
 def test_graded_low_resists_cheap_junk_flood():
     prices = [9.99, 9.99, 9.99, 9.99, 9.99, 150, 160, 170, 180, 190]
     s = summarize([L(f"Luka PSA 10 #{i}", p) for i, p in enumerate(prices)],
                   source="active_listings")
-    assert s.graded_low == 160
+    assert s.graded_low == s.graded_median  # guard floor clamped to the median
+    assert s.graded_low > 9.99
 
 def test_raw_low_single_listing_falls_back_to_min():
     s = summarize([L("Luka raw", 45)], source="active_listings")
@@ -148,3 +152,33 @@ def test_graded_low_uses_same_trimmed_floor():
                   source="active_listings")
     assert s.graded_count == 5
     assert s.graded_low == 150  # second-lowest for 4-7 listings
+
+# --- bimodal buckets must not invert the range --------------------------------
+
+def test_bimodal_bucket_never_inverts_raw_range():
+    # Half junk-cheap, half real: the 30%-of-median flood guard pushes the
+    # floor into the expensive mode (50) while the median straddles both
+    # (25.5). The low must be clamped to the median, never above it.
+    prices = [1, 1, 1, 50, 60, 70]
+    s = summarize([L(f"Luka raw #{i}", p) for i, p in enumerate(prices)],
+                  source="active_listings")
+    assert s.raw_median == 25.5
+    assert s.raw_low is not None and s.raw_low <= s.raw_median
+
+def test_bimodal_bucket_never_inverts_graded_range():
+    prices = [1, 1, 1, 50, 60, 70]
+    s = summarize([L(f"Luka PSA 10 #{i}", p) for i, p in enumerate(prices)],
+                  source="active_listings")
+    assert s.graded_low is not None and s.graded_low <= s.graded_median
+
+def test_bimodal_bucket_prices_sanely_through_decide():
+    from app.schemas import Condition
+    from app.verdict import decide
+
+    prices = [1, 1, 1, 50, 60, 70]
+    s = summarize([L(f"Luka raw #{i}", p) for i, p in enumerate(prices)],
+                  source="active_listings")
+    v = decide(s, Condition(observations=[], grade_low=6, grade_high=8), None, 0.9)
+    assert v.value_low is not None and v.value_high is not None
+    assert v.value_low <= v.value_high
+    assert v.verdict == "no_ask"  # a sane label, not a contradictory call
