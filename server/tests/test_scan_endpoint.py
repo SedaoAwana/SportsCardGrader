@@ -8,7 +8,7 @@ from app import scan as scan_module
 from app.config import Settings
 from app.main import app
 from app.schemas import (Authenticity, CompListing, Condition, Identity,
-                         VisionResult)
+                         Slab, VisionResult)
 from app.vision.prompt import VisionParseError
 from app.vision.providers import ProviderAuthError, ProviderRateLimited
 
@@ -21,6 +21,19 @@ GOOD_VISION = VisionResult(
     authenticity=Authenticity(red_flags=[], risk="low"),
 )
 LISTINGS = [CompListing(title=f"Luka raw {i}", price=50.0 + i, graded=False) for i in range(4)]
+
+SLAB_VISION = VisionResult(
+    photo_ok=True,
+    identity=Identity(player="Luka Doncic", year="2018", set_name="Panini Prizm",
+                      card_number="280",
+                      search_string="2018 Panini Prizm Luka Doncic #280 PSA 9",
+                      confidence=0.92),
+    condition=None,  # the slab already graded it
+    slab=Slab(company="PSA", grade="9"),
+    authenticity=Authenticity(red_flags=[], risk="low"),
+)
+SLAB_LISTINGS = [CompListing(title=f"Luka Doncic Prizm PSA 9 {i}", price=100.0 + i,
+                             graded=True) for i in range(4)]
 
 
 def post_scan(client, **form):
@@ -61,6 +74,40 @@ def test_high_authenticity_risk_vetoes_price_verdict(client, monkeypatch):
     body = post_scan(client, asking_price="30").json()
     assert body["verdict"]["verdict"] == "authenticity_risk"
     assert body["verdict"]["value_low"] is not None
+
+
+def test_slabbed_scan_happy_path(client, monkeypatch):
+    # A slabbed card has condition=null — the scan must not short-circuit,
+    # and the verdict must price from same-grade graded comps.
+    async def fake_vision(*a, **k): return SLAB_VISION
+    async def fake_search(q): return SLAB_LISTINGS
+    monkeypatch.setattr(scan_module, "run_vision", fake_vision)
+    monkeypatch.setattr(scan_module, "search_comps", fake_search)
+    resp = post_scan(client, asking_price="110")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["vision"]["condition"] is None
+    assert body["vision"]["slab"] == {"company": "PSA", "grade": "9"}
+    assert "PSA 9" in body["verdict"]["reasoning"]
+    assert body["verdict"]["verdict"] == "fair"
+    # The comps field carries the summary that priced the card: matching-grade,
+    # so the raw side is empty and all four PSA 9 listings are in the bucket.
+    assert body["comps"]["raw_count"] == 0
+    assert body["comps"]["graded_count"] == 4
+
+
+def test_slabbed_scan_falls_back_to_overall_graded_comps(client, monkeypatch):
+    # Listings graded, but not the slab's grade: mixed-grade fallback with the
+    # overall summary in the comps field.
+    mixed = [CompListing(title=f"Luka Doncic Prizm PSA 10 {i}", price=400.0 + i,
+                         graded=True) for i in range(4)]
+    async def fake_vision(*a, **k): return SLAB_VISION
+    async def fake_search(q): return mixed
+    monkeypatch.setattr(scan_module, "run_vision", fake_vision)
+    monkeypatch.setattr(scan_module, "search_comps", fake_search)
+    body = post_scan(client).json()
+    assert "mixed grades" in body["verdict"]["reasoning"]
+    assert body["comps"]["graded_count"] == 4
 
 
 def test_bad_photo_short_circuits(client, monkeypatch):

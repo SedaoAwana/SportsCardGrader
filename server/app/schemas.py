@@ -30,11 +30,17 @@ class Authenticity(BaseModel):
     red_flags: list[str]
     risk: Literal["low", "caution", "high"]
 
+class Slab(BaseModel):
+    """Professional grading holder read from the label (the easiest vision read)."""
+    company: Literal["PSA", "BGS", "SGC", "CGC", "TAG"]
+    grade: str  # "9", "9.5", "10", ... — string because "Authentic" slabs exist
+
 class VisionResult(BaseModel):
     photo_ok: bool
     photo_issue: Optional[str] = None
     identity: Optional[Identity] = None
-    condition: Optional[Condition] = None
+    condition: Optional[Condition] = None  # null for slabbed cards — the slab already graded it
+    slab: Optional[Slab] = None
     authenticity: Optional[Authenticity] = None
     ai_value_note: Optional[str] = None  # model's rough value memory; fallback when comps are empty
 

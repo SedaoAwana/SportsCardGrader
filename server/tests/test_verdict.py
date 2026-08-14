@@ -1,5 +1,5 @@
-from app.verdict import decide
-from app.schemas import Authenticity, CompsSummary, Condition
+from app.verdict import decide, decide_slab
+from app.schemas import Authenticity, CompsSummary, Condition, Slab
 
 
 def comps(**kw):
@@ -266,6 +266,90 @@ def test_heavy_wear_midpoint_feeds_high_value_gate():
     v = decide(comps(raw_low=900.0, raw_median=1300.0), cond(lo=2, hi=4), None, 0.9)
     assert v.verdict == "high_value"
     assert v.value_high == 1100.0
+
+
+# --- Slab path (decide_slab) -------------------------------------------------
+
+def slab(company="PSA", grade="9"):
+    return Slab(company=company, grade=grade)
+
+
+def graded_comps(count=5, low=100.0, median=150.0):
+    return CompsSummary(source="active_listings", raw_count=0,
+                        graded_count=count, graded_low=low, graded_median=median)
+
+
+def test_slab_matching_path_prices_from_same_grade_comps():
+    v = decide_slab(graded_comps(), graded_comps(count=9, low=50.0, median=400.0),
+                    slab(), asking_price=120.0, identity_confidence=0.9)
+    assert v.verdict == "fair"
+    # The matching summary, not the overall one, sets the range.
+    assert v.value_low == 100.0 and v.value_high == 150.0
+    assert "PSA 9" in v.reasoning
+    assert "5 listings" in v.reasoning
+
+
+def test_slab_matching_path_undervalued_and_overpriced_thresholds():
+    m, o = graded_comps(), graded_comps()
+    assert decide_slab(m, o, slab(), 70.0, 0.9).verdict == "undervalued"   # <= 100*0.7
+    assert decide_slab(m, o, slab(), 180.0, 0.9).verdict == "overpriced"   # >= 150*1.2
+    assert decide_slab(m, o, slab(), 70.01, 0.9).verdict == "fair"
+
+
+def test_slab_no_ask_returns_value_only():
+    v = decide_slab(graded_comps(), graded_comps(), slab(), None, 0.9)
+    assert v.verdict == "no_ask"
+    assert v.value_low == 100.0 and v.value_high == 150.0
+
+
+def test_slab_mixed_grade_fallback_wording():
+    v = decide_slab(None, graded_comps(count=6, low=80.0, median=200.0),
+                    slab(), 100.0, 0.9)
+    assert v.value_low == 80.0 and v.value_high == 200.0
+    assert "mixed grades" in v.reasoning
+    assert "few PSA 9 comps" in v.reasoning
+
+
+def test_slab_too_few_graded_comps_is_not_enough_data():
+    v = decide_slab(None, graded_comps(count=2), slab(), 100.0, 0.9)
+    assert v.verdict == "not_enough_data"
+    assert "graded listings" in v.reasoning.lower()
+
+
+def test_slab_low_identity_confidence_downgrades():
+    v = decide_slab(graded_comps(), graded_comps(), slab(), 100.0, 0.4)
+    assert v.verdict == "not_enough_data"
+
+
+def test_slab_authenticity_veto_mentions_slab_label():
+    v = decide_slab(graded_comps(), graded_comps(), slab(), 70.0, 0.9,
+                    authenticity=auth("high", ["label font looks off"]))
+    assert v.verdict == "authenticity_risk"
+    assert "slab label and hologram" in v.reasoning
+    # Range stays as "if genuine" context.
+    assert v.value_low == 100.0 and v.value_high == 150.0
+
+
+def test_slab_caution_annotates_reasoning():
+    v = decide_slab(graded_comps(), graded_comps(), slab(), 120.0, 0.9,
+                    authenticity=auth("caution", ["hologram hard to see"]))
+    assert v.verdict == "fair"
+    assert "authenticity flags" in v.reasoning
+
+
+def test_slab_high_value_guardrail():
+    v = decide_slab(graded_comps(low=900.0, median=1500.0), graded_comps(),
+                    slab(grade="10"), 1200.0, 0.9)
+    assert v.verdict == "high_value"
+    assert v.value_low == 900.0 and v.value_high == 1500.0
+
+
+def test_slab_skips_low_value_guardrail():
+    # A sub-$10 range on a slab is comp noise, not a commodity card — the
+    # under/over call still happens (grading alone costs more than $10).
+    v = decide_slab(graded_comps(low=5.0, median=8.0), graded_comps(),
+                    slab(), 2.0, 0.9)
+    assert v.verdict == "undervalued"
 
 
 def test_heavy_wear_midpoint_can_defuse_high_value_gate():

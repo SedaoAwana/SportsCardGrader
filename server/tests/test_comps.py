@@ -1,4 +1,4 @@
-from app.comps import summarize, is_graded, is_junk
+from app.comps import matching_grade_summary, summarize, is_graded, is_junk
 from app.schemas import CompListing
 
 def L(title, price):
@@ -152,6 +152,59 @@ def test_graded_low_uses_same_trimmed_floor():
                   source="active_listings")
     assert s.graded_count == 5
     assert s.graded_low == 150  # second-lowest for 4-7 listings
+
+# --- matching-grade summary (slab mode) ---------------------------------------
+
+def test_matching_grade_summary_filters_to_same_company_and_grade():
+    listings = [L("Luka PSA 9 rookie", 100), L("Luka Doncic PSA 9", 110),
+                L("2018 Prizm Luka PSA 9 #280", 120),
+                L("Luka PSA 10 gem", 400),          # same company, other grade
+                L("Luka BGS 9 rookie", 90),         # other company, same grade
+                L("Luka raw RC #280", 50)]          # raw
+    s = matching_grade_summary(listings, "PSA", "9", source="active_listings")
+    assert s is not None
+    assert s.graded_count == 3
+    assert s.graded_median == 110
+    # Raw side is intentionally empty: this summary prices the slab only.
+    assert (s.raw_count, s.raw_low, s.raw_median) == (0, None, None)
+
+def test_matching_grade_summary_is_case_insensitive_on_company():
+    listings = [L("Luka psa 9", 100), L("Luka Psa 9", 110), L("Luka PSA 9", 120)]
+    s = matching_grade_summary(listings, "psa", "9", source="active_listings")
+    assert s is not None and s.graded_count == 3
+
+def test_matching_grade_summary_grade_9_does_not_match_9_5():
+    listings = [L(f"Luka BGS 9.5 #{i}", 200 + i) for i in range(3)]
+    assert matching_grade_summary(listings, "BGS", "9",
+                                  source="active_listings") is None
+    s = matching_grade_summary(listings, "BGS", "9.5", source="active_listings")
+    assert s is not None and s.graded_count == 3
+
+def test_matching_grade_summary_under_three_matches_is_none():
+    listings = [L("Luka PSA 9", 100), L("Luka PSA 9 rookie", 110),
+                L("Luka PSA 10", 400)]
+    assert matching_grade_summary(listings, "PSA", "9",
+                                  source="active_listings") is None
+
+def test_matching_grade_summary_drops_junk():
+    listings = [L("Luka PSA 9", 100), L("Luka PSA 9 rookie", 110),
+                L("Luka PSA 9 lot of 5", 30)]      # junk never prices a slab
+    assert matching_grade_summary(listings, "PSA", "9",
+                                  source="active_listings") is None
+
+def test_matching_grade_summary_uses_trimmed_floor():
+    # Same robust-low machinery as summarize: second-lowest for 4-7 listings.
+    prices = [50, 150, 160, 170, 180]   # 50 >= 0.3 * median(160): guard inactive
+    listings = [L(f"Luka PSA 10 #{i}", p) for i, p in enumerate(prices)]
+    s = matching_grade_summary(listings, "PSA", "10", source="active_listings")
+    assert s.graded_count == 5
+    assert s.graded_low == 150 and s.graded_median == 160
+
+def test_matching_grade_summary_normalizes_grade_strings():
+    # A vision read of "9.0" must match "PSA 9" titles.
+    listings = [L(f"Luka PSA 9 #{i}", 100 + i) for i in range(3)]
+    s = matching_grade_summary(listings, "PSA", "9.0", source="active_listings")
+    assert s is not None and s.graded_count == 3
 
 # --- bimodal buckets must not invert the range --------------------------------
 

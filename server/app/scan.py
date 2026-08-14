@@ -6,11 +6,11 @@ still gets the vision analysis they paid an AI call for.
 """
 from typing import Optional
 
-from app.comps import summarize
+from app.comps import matching_grade_summary, summarize
 from app.config import get_settings
 from app.pricing import PricingSource, get_pricing_source
 from app.schemas import CompListing, ScanResponse, VisionResult
-from app.verdict import decide
+from app.verdict import decide, decide_slab
 from app.vision.providers import analyze_card
 
 _pricing_source: Optional[PricingSource] = None
@@ -37,7 +37,10 @@ async def perform_scan(front: bytes, front_type: str, back: Optional[tuple[bytes
                        provider: str, api_key: str, model: str,
                        asking_price: Optional[float]) -> ScanResponse:
     vision = await run_vision(front, front_type, back, provider, api_key, model)
-    if not vision.photo_ok or vision.identity is None or vision.condition is None:
+    # A slabbed card legitimately has condition=null (the slab already graded
+    # it), so condition is only required on the raw path.
+    if (not vision.photo_ok or vision.identity is None
+            or (vision.condition is None and vision.slab is None)):
         return ScanResponse(vision=vision)
 
     try:
@@ -47,6 +50,20 @@ async def perform_scan(front: bytes, front_type: str, back: Optional[tuple[bytes
         listings = await search_comps(vision.identity.search_string)
     except Exception as e:
         return ScanResponse(vision=vision, comps_error=str(e))
+
+    if vision.slab is not None:
+        # Slab path: the search string already carries company+grade (per the
+        # vision prompt), so the listings skew toward same-grade slabs. Price
+        # from same-grade comps when there are enough, else all graded comps.
+        overall = summarize(listings, source=source_type)
+        matching = matching_grade_summary(listings, vision.slab.company,
+                                          vision.slab.grade, source=source_type)
+        verdict = decide_slab(matching, overall, vision.slab, asking_price,
+                              vision.identity.confidence,
+                              authenticity=vision.authenticity)
+        # The response carries the summary that actually priced the card.
+        comps = matching if matching is not None else overall
+        return ScanResponse(vision=vision, comps=comps, verdict=verdict)
 
     comps = summarize(listings, source=source_type)
     verdict = decide(comps, vision.condition, asking_price, vision.identity.confidence,

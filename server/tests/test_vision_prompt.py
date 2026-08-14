@@ -57,6 +57,33 @@ def test_parse_photo_not_ok_fills_photo_issue():
     assert isinstance(r.photo_issue, str) and r.photo_issue
 
 
+def test_prompt_mentions_slab_shape():
+    p = build_prompt()
+    assert '"slab"' in p
+    assert "grading holder" in p
+    # Slab rules: read the label, fold company+grade into the search string,
+    # null out condition, and watch for fake-slab signs.
+    assert "PSA 9" in p
+    assert "hologram" in p
+
+
+def test_parse_round_trips_slab():
+    raw = ('{"photo_ok": true, "identity": {"player": "Luka Doncic", "year": "2018", '
+           '"set_name": "Panini Prizm", "card_number": "280", "variant": null, '
+           '"search_string": "2018 Panini Prizm Luka Doncic #280 PSA 9", "confidence": 0.9}, '
+           '"condition": null, "slab": {"company": "PSA", "grade": "9"}, '
+           '"authenticity": {"red_flags": [], "risk": "low"}, "ai_value_note": null}')
+    r = parse_vision_json(raw)
+    assert r.slab is not None
+    assert r.slab.company == "PSA" and r.slab.grade == "9"
+    assert r.condition is None
+
+
+def test_parse_without_slab_key_defaults_to_none():
+    r = parse_vision_json('{"photo_ok": true}')
+    assert r.slab is None
+
+
 def test_parse_tolerates_leading_prose_and_trailing_text():
     raw = ('Here is the JSON:\n```json\n'
            '{"photo_ok": false, "photo_issue": "glare"}\n'

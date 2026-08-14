@@ -37,6 +37,8 @@ Respond with ONLY a JSON object, no prose, matching exactly this shape:
   "condition": {{"observations": [{{"area": "corners"|"edges"|"surface"|"centering",
                 "severity": "none"|"minor"|"moderate"|"heavy", "note": str}}],
                 "grade_low": number 1-10, "grade_high": number 1-10}} | null,
+  "slab": {{"company": "PSA"|"BGS"|"SGC"|"CGC"|"TAG", "grade": str}} | null,
+                               // ONLY if the card is in a professional grading holder — read the label
   "authenticity": {{"red_flags": [str], "risk": "low"|"caution"|"high"}} | null,
   "ai_value_note": str|null    // rough market value from your knowledge, one sentence, or null
 }}
@@ -47,6 +49,10 @@ Rules:
   PSA 9 from 10 — be honest about the spread.
 - Authenticity red_flags are warning signs (print dot pattern, era-inconsistent fonts/logos,
   gloss, miscut suggesting a reprint sheet), NOT a certification.
+- If the card is slabbed: read company and grade from the label; include the company and
+  grade in search_string (e.g. "2018 Panini Prizm Luka Doncic #280 PSA 9"); set condition
+  to null (the slab already graded it); authenticity red flags should consider fake-slab
+  signs (label font, hologram).
 - If photo_ok is false, set identity/condition/authenticity to null.
 
 PSA grading scale for reference:

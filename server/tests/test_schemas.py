@@ -1,6 +1,7 @@
 import pytest
 from pydantic import ValidationError
-from app.schemas import Identity, Condition, VisionResult, Verdict, CompListing
+from app.schemas import (Identity, Condition, Slab, VisionResult, Verdict,
+                         CompListing)
 
 def test_identity_confidence_bounds():
     with pytest.raises(ValidationError):
@@ -28,3 +29,20 @@ def test_vision_result_photo_not_ok_fills_default_issue():
     r = VisionResult(photo_ok=False)
     assert isinstance(r.photo_issue, str)
     assert r.photo_issue
+
+def test_slab_holds_company_and_string_grade():
+    s = Slab(company="BGS", grade="9.5")
+    assert s.company == "BGS" and s.grade == "9.5"
+    # Non-numeric grades exist ("Authentic" slabs) — grade is a string.
+    assert Slab(company="PSA", grade="Authentic").grade == "Authentic"
+
+def test_slab_rejects_unknown_company():
+    with pytest.raises(ValidationError):
+        Slab(company="HGA", grade="9")
+
+def test_vision_result_slab_defaults_to_none():
+    assert VisionResult(photo_ok=True).slab is None
+
+def test_vision_result_accepts_slab_with_null_condition():
+    r = VisionResult(photo_ok=True, slab=Slab(company="PSA", grade="9"))
+    assert r.slab.company == "PSA" and r.condition is None

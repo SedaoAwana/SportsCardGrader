@@ -17,7 +17,7 @@ Gate order (each returns early):
 """
 from typing import Optional
 
-from app.schemas import Authenticity, CompsSummary, Condition, Verdict
+from app.schemas import Authenticity, CompsSummary, Condition, Slab, Verdict
 
 MIN_CONFIDENCE = 0.5
 MIN_COMPS = 3
@@ -103,6 +103,96 @@ def decide(comps: CompsSummary, condition: Condition,
             verdict="high_value",
             reasoning=reasoning + " High-value card — estimate only. Professional "
                       "authentication and grading are strongly recommended "
+                      "before any transaction at this level.",
+        )
+
+    if asking_price is None:
+        return Verdict(value_low=value_low, value_high=value_high,
+                       verdict="no_ask", reasoning=reasoning)
+
+    if asking_price <= value_low * UNDERVALUED_RATIO:
+        label, tail = "undervalued", f" The ${asking_price:.0f} ask is well below the low end."
+    elif asking_price >= value_high * OVERPRICED_RATIO:
+        label, tail = "overpriced", f" The ${asking_price:.0f} ask is above the typical range."
+    else:
+        label, tail = "fair", f" The ${asking_price:.0f} ask sits within the typical range."
+    return Verdict(value_low=value_low, value_high=value_high,
+                   verdict=label, reasoning=reasoning + tail)
+
+
+def decide_slab(matching: Optional[CompsSummary], overall: CompsSummary,
+                slab: Slab, asking_price: Optional[float],
+                identity_confidence: float,
+                authenticity: Optional[Authenticity] = None) -> Verdict:
+    """Verdict for a professionally graded (slabbed) card.
+
+    Kept separate from decide() so the raw path stays untouched: a slab has no
+    condition estimate (the label already graded it) and prices from graded
+    comps, so the gates differ:
+
+      1. identity confidence            -> not_enough_data
+      2. graded-comp sufficiency        -> range from same-grade comps when
+                                           `matching` exists, else all graded
+                                           comps as a mixed-grade estimate,
+                                           else not_enough_data
+      3. authenticity veto (high)       -> authenticity_risk — a fake slab is
+                                           the whole con, so the veto points at
+                                           the label and hologram
+      4. caution caveat                 -> reasoning note only
+      5. high-stakes guardrail          -> high_value
+         (no low-value guardrail: slabs are rarely sub-$10 — grading alone
+          costs more than that, so a sub-$10 slab range is comp noise, not a
+          commodity card; an under/over call is still worth making)
+      6. ask comparison                 -> undervalued / fair / overpriced / no_ask
+    """
+    if identity_confidence < MIN_CONFIDENCE:
+        return Verdict(
+            verdict="not_enough_data",
+            reasoning="Card identification confidence is too low to price reliably. "
+                      "Try a clearer photo.",
+        )
+
+    grade_label = f"{slab.company} {slab.grade}"
+    if (matching is not None and matching.graded_count >= MIN_COMPS
+            and matching.graded_low is not None
+            and matching.graded_median is not None):
+        value_low, value_high = matching.graded_low, matching.graded_median
+        reasoning = (f"{grade_label} copies range ${value_low:.0f}–${value_high:.0f} "
+                     f"based on {matching.graded_count} listings.")
+    elif (overall.graded_count >= MIN_COMPS
+            and overall.graded_low is not None
+            and overall.graded_median is not None):
+        value_low, value_high = overall.graded_low, overall.graded_median
+        reasoning = (f"Graded copies (mixed grades) range "
+                     f"${value_low:.0f}–${value_high:.0f} — "
+                     f"few {grade_label} comps found.")
+    else:
+        return Verdict(
+            verdict="not_enough_data",
+            reasoning="Too few graded listings found to establish a value for "
+                      "this slab.",
+        )
+
+    if authenticity is not None and authenticity.risk == "high":
+        return Verdict(
+            value_low=value_low, value_high=value_high,
+            verdict="authenticity_risk",
+            reasoning="Counterfeit red flags detected (check slab label and "
+                      "hologram) — resolve authenticity before trusting any "
+                      "price. If genuine, comparable copies range "
+                      f"${value_low:.0f}–${value_high:.0f}.",
+        )
+
+    if authenticity is not None and authenticity.risk == "caution":
+        reasoning += (" Note: minor authenticity flags were spotted — "
+                      "inspect closely.")
+
+    if value_high > HIGH_VALUE_CEILING:
+        return Verdict(
+            value_low=value_low, value_high=value_high,
+            verdict="high_value",
+            reasoning=reasoning + " High-value card — estimate only. Verify the "
+                      "slab (cert number lookup with the grading company) "
                       "before any transaction at this level.",
         )
 

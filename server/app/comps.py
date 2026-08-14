@@ -101,25 +101,80 @@ def _clamp_to_median(low: float | None, median: float | None) -> float | None:
     return min(low, median)
 
 
+def _bucket_stats(prices: list[float]) -> tuple[float | None, float | None]:
+    """(robust low, median) for a sorted price bucket.
+
+    The low is a trimmed floor (_floor), not an absolute minimum. In bimodal
+    buckets (half junk-cheap, half real) the 30%-of-median flood guard can
+    push the floor above a median that straddles both modes, so the low is
+    clamped to the median — a range must never read $50–$26.
+    """
+    if not prices:
+        return None, None
+    median = statistics.median(prices)
+    return _clamp_to_median(_floor(prices), median), median
+
+
 def summarize(listings: list[CompListing], source: str) -> CompsSummary:
     # Junk is dropped before bucketing so counts, lows, and medians all
     # reflect only plausible comps (a graded lot is junk too).
     kept = [l for l in listings if not is_junk(l.title)]
     raw = sorted(l.price for l in kept if not l.graded)
     graded = sorted(l.price for l in kept if l.graded)
-    # *_low fields are robust lows (trimmed floors), not absolute minimums.
-    # In bimodal buckets (half junk-cheap, half real) the 30%-of-median flood
-    # guard can push the floor above a median that straddles both modes, so
-    # each low is clamped to its median — a range must never read $50–$26.
-    raw_low = _clamp_to_median(_floor(raw), statistics.median(raw) if raw else None)
-    graded_low = _clamp_to_median(_floor(graded),
-                                  statistics.median(graded) if graded else None)
+    raw_low, raw_median = _bucket_stats(raw)
+    graded_low, graded_median = _bucket_stats(graded)
     return CompsSummary(
         source=source,
         raw_count=len(raw),
         raw_low=raw_low,
-        raw_median=statistics.median(raw) if raw else None,
+        raw_median=raw_median,
         graded_count=len(graded),
         graded_low=graded_low,
-        graded_median=statistics.median(graded) if graded else None,
+        graded_median=graded_median,
+    )
+
+
+# Minimum same-company/same-grade comps before the slab path trusts them as a
+# dedicated bucket (below this, mixed-grade or not_enough_data fallbacks apply).
+MIN_MATCHING_COMPS = 3
+
+
+def _norm_grade(grade: str) -> str:
+    """Normalize a grade string for equality: '9.0' == '9', but '9' != '9.5'."""
+    g = grade.strip().upper()
+    return g[:-2] if g.endswith(".0") else g
+
+
+def matching_grade_summary(listings: list[CompListing], company: str, grade: str,
+                           source: str) -> CompsSummary | None:
+    """Summary of comps slabbed by the SAME company at the SAME grade.
+
+    A PSA 9 is priced by other PSA 9s — a PSA 10 or BGS 9.5 of the same card
+    trades in a different market. The matching listings land in the graded
+    bucket (raw fields empty: this summary prices the slab only), reusing the
+    same trimmed-floor machinery as summarize(). Returns None when fewer than
+    MIN_MATCHING_COMPS listings match, so callers can fall back.
+    """
+    want_company = company.strip().upper()
+    want_grade = _norm_grade(grade)
+    prices = []
+    for l in listings:
+        if is_junk(l.title):
+            continue
+        m = _GRADED_RE.search(l.title)
+        if (m and m.group(1).upper() == want_company
+                and _norm_grade(m.group(2)) == want_grade):
+            prices.append(l.price)
+    if len(prices) < MIN_MATCHING_COMPS:
+        return None
+    prices.sort()
+    graded_low, graded_median = _bucket_stats(prices)
+    return CompsSummary(
+        source=source,
+        raw_count=0,
+        raw_low=None,
+        raw_median=None,
+        graded_count=len(prices),
+        graded_low=graded_low,
+        graded_median=graded_median,
     )
