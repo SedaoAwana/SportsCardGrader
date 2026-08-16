@@ -9,6 +9,7 @@ dependencies = [
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
     "python-multipart>=0.0.9",
+    "lighthive>=0.4",
 ]
 
 [project.optional-dependencies]

@@ -45,6 +45,9 @@ Thumbs.db
 *.tmp
 *.bak
 
+# Server runtime data (hive publish queue jobs)
+server/data/
+
 # Test output
 .coverage
 htmlcov/
