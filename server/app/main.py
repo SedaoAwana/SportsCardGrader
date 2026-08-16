@@ -1,3 +1,4 @@
+import asyncio
 from typing import Annotated, Optional
 
 import httpx
@@ -13,6 +14,11 @@ from app.vision.providers import ProviderAuthError, ProviderRateLimited
 app = FastAPI(title="Card Scanner API", version="0.1.0")
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # public endpoint; phone photos are well under this
+
+# Hard budget for the whole scan pipeline (vision + comps). Kept under 60s so
+# we time out cleanly before typical platform/LB request timeouts cut the
+# connection mid-flight — the LB window must exceed this (see DEPLOY.md).
+SCAN_TIMEOUT_SECONDS = 55.0
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,10 +61,15 @@ async def scan(
     # Only vision-path errors surface here; eBay failures become a partial
     # result (comps_error) inside perform_scan.
     try:
-        return await scan_module.perform_scan(
-            front_bytes, front.content_type or "image/jpeg", back_tuple,
-            provider=x_ai_provider, api_key=x_ai_key, model=model,
-            asking_price=asking_price)
+        async with asyncio.timeout(SCAN_TIMEOUT_SECONDS):
+            return await scan_module.perform_scan(
+                front_bytes, front.content_type or "image/jpeg", back_tuple,
+                provider=x_ai_provider, api_key=x_ai_key, model=model,
+                asking_price=asking_price)
+    # TimeoutError first: it must never be swallowed by a broader handler
+    # (asyncio.timeout raises the builtin TimeoutError on Python 3.11+).
+    except TimeoutError:
+        raise HTTPException(504, "Scan timed out. Try again — a clearer photo often helps.")
     except ProviderAuthError:
         raise HTTPException(401, "Your AI provider rejected the API key. Check it in Settings.")
     except ProviderRateLimited:

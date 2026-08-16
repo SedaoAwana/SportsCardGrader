@@ -1,3 +1,4 @@
+import asyncio
 import io
 
 import httpx
@@ -155,6 +156,30 @@ def test_search_comps_gate_without_credentials(client, monkeypatch):
     body = post_scan(client).json()
     assert body["comps"] is None
     assert "not configured" in body["comps_error"]
+
+
+def test_scan_timeout_is_504(client, monkeypatch):
+    # A pipeline that outlives the budget must come back as a 504, not hang.
+    async def stuck_scan(*a, **k):
+        await asyncio.sleep(5)
+    monkeypatch.setattr(scan_module, "perform_scan", stuck_scan)
+    monkeypatch.setattr("app.main.SCAN_TIMEOUT_SECONDS", 0.05)
+    resp = post_scan(client)
+    assert resp.status_code == 504
+    assert "Scan timed out" in resp.json()["detail"]
+
+
+def test_scan_within_timeout_budget_succeeds(client, monkeypatch):
+    # The timeout wrapper must not disturb a scan that finishes in time,
+    # even with a tight budget.
+    async def fake_vision(*a, **k): return GOOD_VISION
+    async def fake_search(q): return LISTINGS
+    monkeypatch.setattr(scan_module, "run_vision", fake_vision)
+    monkeypatch.setattr(scan_module, "search_comps", fake_search)
+    monkeypatch.setattr("app.main.SCAN_TIMEOUT_SECONDS", 5.0)
+    resp = post_scan(client, asking_price="30")
+    assert resp.status_code == 200
+    assert resp.json()["verdict"]["verdict"] == "undervalued"
 
 
 def test_invalid_ai_key_is_401(client, monkeypatch):
