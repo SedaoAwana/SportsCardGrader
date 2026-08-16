@@ -4,6 +4,7 @@ All Hive machinery hangs off app.state.hive (a HiveState); when Hive is not
 configured the app still runs fully — these endpoints just answer 503.
 """
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Annotated, Optional
 
@@ -22,6 +23,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+FEED_CACHE_TTL_SECONDS = 60.0
+
+
 @dataclass
 class HiveState:
     client: HiveClient
@@ -31,6 +35,9 @@ class HiveState:
     posting_key: str = field(repr=False, default="")  # never in logs/repr
     fallback_token: str = field(repr=False, default="")
     dry_run: bool = False
+    # Feed cache: cursor key -> (expires_monotonic, payload). Cleared when the
+    # queue confirms a publish so a fresh card shows on the next refresh.
+    feed_cache: dict = field(default_factory=dict)
 
 
 def _state(request: Request) -> HiveState:
@@ -96,6 +103,65 @@ async def publish_status(request: Request, job_id: str):
     if job is None:
         raise HTTPException(404, "Unknown publish job.")
     return _job_payload(job, state.queue)
+
+
+def _parse_card_post(post: dict) -> Optional[dict]:
+    """A bridge post -> feed entry, or None when it isn't a valid app card.
+
+    The community is open — humans can post in The Binder too — so anything
+    that doesn't carry a valid v1 card record is silently skipped.
+    """
+    meta = post.get("json_metadata") or {}
+    if not isinstance(meta, dict) or not isinstance(meta.get("card"), dict):
+        return None
+    try:
+        card = CardRecord.model_validate(meta["card"])
+    except ValidationError:
+        return None
+    if card.v != 1:
+        return None
+    return {"permlink": post["permlink"], "author": post["author"],
+            "created": post.get("created"), "card": card.model_dump(mode="json")}
+
+
+@router.get("/api/cards")
+async def list_cards(request: Request, limit: int = 20, start_author: str = "",
+                     start_permlink: str = "", all_authors: bool = False):
+    state = _state(request)
+    key = (limit, start_author, start_permlink, all_authors)
+    cached = state.feed_cache.get(key)
+    if cached and cached[0] > time.monotonic():
+        return cached[1]
+    posts = await state.client.get_ranked_posts(
+        sort="created", tag=state.community, limit=limit,
+        start_author=start_author, start_permlink=start_permlink)
+    cards = []
+    for post in posts:
+        entry = _parse_card_post(post)
+        if entry is None:
+            continue
+        if not all_authors and entry["author"] != state.client.account:
+            continue
+        cards.append(entry)
+    # Cursor from the last RAW post: filtering must never skip a page.
+    next_cursor = None
+    if len(posts) >= limit and posts:
+        next_cursor = {"start_author": posts[-1]["author"],
+                       "start_permlink": posts[-1]["permlink"]}
+    payload = {"cards": cards, "next": next_cursor}
+    state.feed_cache[key] = (time.monotonic() + FEED_CACHE_TTL_SECONDS, payload)
+    return payload
+
+
+@router.get("/api/cards/{permlink}")
+async def card_detail(request: Request, permlink: str):
+    state = _state(request)
+    post = await state.client.get_post(state.client.account, permlink)
+    entry = _parse_card_post(post) if post else None
+    if entry is None:
+        raise HTTPException(404, "No such card in The Binder.")
+    entry["hive_url"] = f"https://peakd.com/@{state.client.account}/{permlink}"
+    return entry
 
 
 @router.get("/api/hive/status")

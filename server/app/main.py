@@ -36,6 +36,8 @@ async def lifespan(app: FastAPI):
             posting_key=settings.hive_posting_key,
             fallback_token=settings.images_3speak_token,
             dry_run=settings.hive_dry_run)
+        # A freshly confirmed card must show on the next Binder refresh.
+        queue.on_confirmed = lambda _job: app.state.hive.feed_cache.clear()
         worker = asyncio.create_task(queue.run_forever(stop))
     yield
     if worker is not None:
