@@ -501,3 +501,76 @@ button:focus-visible {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* Binder publish: per-row actions, status chips, consent modal */
+.history-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 4px 12px;
+}
+
+.history-actions button {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+.chip {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.chip-published {
+  background: var(--verdict-green);
+  border-color: var(--verdict-green);
+  color: #fff;
+}
+
+.chip-queued,
+.chip-publishing {
+  color: var(--text);
+}
+
+.chip-failed {
+  background: var(--verdict-red);
+  border-color: var(--verdict-red);
+  color: #fff;
+}
+
+.chip-error {
+  font-size: 0.75rem;
+  color: var(--verdict-red);
+}
+
+.modal {
+  position: fixed;
+  inset: auto 16px 16px;
+  z-index: 10;
+  background: var(--bg, #fff);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  display: grid;
+  gap: 10px;
+}
+
+/* Binder detail view */
+.binder-photo {
+  max-width: 100%;
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.binder-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}

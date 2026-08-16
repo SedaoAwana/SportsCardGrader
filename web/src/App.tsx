@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import { ApiError, checkHealth, SCAN_TIMEOUT_MS, scanCard } from './api'
 import { prepareImage } from './imagePrep'
 import ScanOverlay from './ScanOverlay'
+import BinderScreen from './screens/BinderScreen'
 import HistoryScreen from './screens/HistoryScreen'
 import ResultsScreen from './screens/ResultsScreen'
 import ScanScreen from './screens/ScanScreen'
 import SettingsScreen from './screens/SettingsScreen'
+import { migrateFromLocalStorage, stageScan } from './binderDb'
 import { loadSettings, pushHistory } from './storage'
 import type { ScanResponse } from './types'
 
-type View = 'scan' | 'results' | 'settings' | 'history'
+type View = 'scan' | 'results' | 'settings' | 'history' | 'binder'
 
 function App() {
   // First run: no saved settings yet, force onboarding.
@@ -27,6 +29,9 @@ function App() {
     checkHealth().then(ok => {
       if (!ok) setServerDown(true)
     })
+    // One-time import of pre-IndexedDB localStorage history; harmless no-op after.
+    migrateFromLocalStorage().catch(err =>
+      console.warn('History migration failed:', err))
   }, [])
 
   async function handleScan(front: File, back: File | null, askingPrice: number | null) {
@@ -51,15 +56,21 @@ function App() {
         back ? prepareImage(back) : Promise.resolve(null),
       ])
       const response = await scanCard(prepFront, prepBack, askingPrice, settings, signal)
-      // Show the paid-for result FIRST — the history write is best-effort and
-      // must never cost the seller a completed scan (e.g. localStorage full).
+      // Show the paid-for result FIRST — the staging write is best-effort and
+      // must never cost the seller a completed scan (e.g. storage full).
       setLastResult(response)
       setLastAskingPrice(askingPrice)
       setView('results')
       try {
-        pushHistory({ at: new Date().toISOString(), response, askingPrice: askingPrice ?? undefined })
-      } catch (histErr) {
-        console.warn('Could not save scan to history:', histErr)
+        // Keep the prepared blobs: they're what gets published to The Binder.
+        await stageScan(response, askingPrice, prepFront, prepBack)
+      } catch (stageErr) {
+        console.warn('Could not stage scan; falling back to localStorage:', stageErr)
+        try {
+          pushHistory({ at: new Date().toISOString(), response, askingPrice: askingPrice ?? undefined })
+        } catch (histErr) {
+          console.warn('Could not save scan to history:', histErr)
+        }
       }
       navigator.vibrate?.(50)
     } catch (err) {
@@ -88,6 +99,7 @@ function App() {
           {/* Disabled while scanning: navigating mid-scan would teleport the
               user away and orphan the in-flight result. */}
           <button disabled={busy} onClick={() => setView('scan')}>Scan</button>
+          <button disabled={busy} onClick={() => setView('binder')}>Binder</button>
           <button disabled={busy} onClick={() => setView('history')}>History</button>
           <button disabled={busy} onClick={() => setView('settings')}>Settings</button>
         </nav>
@@ -122,6 +134,8 @@ function App() {
       {busy && (
         <ScanOverlay previewUrl={scanPreviewUrl} onCancel={() => abortRef.current?.abort()} />
       )}
+
+      {view === 'binder' && <BinderScreen />}
 
       {view === 'history' && (
         <HistoryScreen

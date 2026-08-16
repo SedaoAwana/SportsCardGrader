@@ -1,4 +1,6 @@
 import asyncio
+from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated, Optional
 
 import httpx
@@ -7,11 +9,46 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import scan as scan_module
 from app.config import get_settings
+from app.hive.client import HiveClient
+from app.hive.queue import PublishQueue
+from app.publish_routes import HiveState, router as publish_router
 from app.schemas import ScanResponse
 from app.vision.prompt import VisionParseError
 from app.vision.providers import ProviderAuthError, ProviderRateLimited
 
-app = FastAPI(title="Card Scanner API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+    stop = asyncio.Event()
+    worker: Optional[asyncio.Task] = None
+    if settings.hive_configured:
+        client = HiveClient(settings.hive_node_list, account=settings.hive_account,
+                            posting_key=settings.hive_posting_key,
+                            dry_run=settings.hive_dry_run)
+        queue = PublishQueue(
+            Path(settings.hive_queue_dir), client, settings.hive_community,
+            root_interval=settings.hive_root_post_interval_seconds,
+            min_rc_percent=settings.hive_min_rc_percent)
+        app.state.hive = HiveState(
+            client=client, queue=queue, community=settings.hive_community,
+            http=httpx.AsyncClient(timeout=30.0),
+            posting_key=settings.hive_posting_key,
+            fallback_token=settings.images_3speak_token,
+            dry_run=settings.hive_dry_run)
+        # A freshly confirmed card must show on the next Binder refresh.
+        queue.on_confirmed = lambda _job: app.state.hive.feed_cache.clear()
+        worker = asyncio.create_task(queue.run_forever(stop))
+    yield
+    if worker is not None:
+        stop.set()
+        await worker
+        await app.state.hive.http.aclose()
+
+
+app = FastAPI(title="Card Scanner API", version="0.1.0", lifespan=lifespan)
+app.state.hive = None  # set by lifespan when HIVE_ACCOUNT/HIVE_POSTING_KEY exist
+app.include_router(publish_router)
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # public endpoint; phone photos are well under this
 

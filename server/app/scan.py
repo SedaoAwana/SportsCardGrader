@@ -43,13 +43,26 @@ async def perform_scan(front: bytes, front_type: str, back: Optional[tuple[bytes
             or (vision.condition is None and vision.slab is None)):
         return ScanResponse(vision=vision)
 
+    comps, verdict, _listings, comps_error = await price_vision(vision, asking_price)
+    if comps_error is not None:
+        return ScanResponse(vision=vision, comps_error=comps_error)
+    return ScanResponse(vision=vision, comps=comps, verdict=verdict)
+
+
+async def price_vision(vision, asking_price: Optional[float]):
+    """Comps + verdict for an already-identified card. Shared by the scan
+    pipeline and the Binder comps-refresh path.
+
+    Returns (comps, verdict, listings, comps_error); comps_error is None on
+    success and carries the self-diagnosing message otherwise.
+    """
     try:
         # Resolved inside the try so a misconfigured PRICING_SOURCE degrades to
         # a self-diagnosing comps_error instead of a 500.
         source_type = _get_pricing_source().source_type
         listings = await search_comps(vision.identity.search_string)
     except Exception as e:
-        return ScanResponse(vision=vision, comps_error=str(e))
+        return None, None, [], str(e)
 
     if vision.slab is not None:
         # Slab path: the search string already carries company+grade (per the
@@ -61,11 +74,11 @@ async def perform_scan(front: bytes, front_type: str, back: Optional[tuple[bytes
         verdict = decide_slab(matching, overall, vision.slab, asking_price,
                               vision.identity.confidence,
                               authenticity=vision.authenticity)
-        # The response carries the summary that actually priced the card.
+        # The result carries the summary that actually priced the card.
         comps = matching if matching is not None else overall
-        return ScanResponse(vision=vision, comps=comps, verdict=verdict)
+        return comps, verdict, listings, None
 
     comps = summarize(listings, source=source_type)
     verdict = decide(comps, vision.condition, asking_price, vision.identity.confidence,
                      authenticity=vision.authenticity)
-    return ScanResponse(vision=vision, comps=comps, verdict=verdict)
+    return comps, verdict, listings, None

@@ -11,11 +11,34 @@ class Settings(BaseSettings):
     anthropic_default_model: str = "claude-sonnet-5"
     openai_default_model: str = "gpt-5.1"
 
+    # Hive publishing ("The Binder" community). Posting key only — never the
+    # active/owner key; a leak means spam risk, not fund risk. Never logged.
+    hive_account: str = ""
+    hive_posting_key: str = ""
+    hive_community: str = "hive-192941"
+    hive_nodes: str = ""  # comma-separated override; empty = DEFAULT_NODES
+    hive_dry_run: bool = False  # log ops instead of broadcasting
+    hive_queue_dir: str = "data/publish_queue"
+    hive_root_post_interval_seconds: int = 305  # chain allows 1 root post / 5 min
+    hive_min_rc_percent: float = 5.0
+    images_3speak_token: str = ""  # optional images.hive.blog fallback
+
     model_config = {"env_file": ".env"}
 
     @property
     def ebay_configured(self) -> bool:
         return bool(self.ebay_client_id and self.ebay_client_secret)
+
+    @property
+    def hive_configured(self) -> bool:
+        return bool(self.hive_account and self.hive_posting_key)
+
+    @property
+    def hive_node_list(self) -> list[str]:
+        from app.hive.client import DEFAULT_NODES
+        if not self.hive_nodes.strip():
+            return list(DEFAULT_NODES)
+        return [n.strip() for n in self.hive_nodes.split(",") if n.strip()]
 
 
 @lru_cache

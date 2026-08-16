@@ -60,6 +60,16 @@ EBAY_CLIENT_SECRET=your-client-secret
 
 Without them the app still works — scans just won't include market prices or a value verdict.
 
+### Hive publishing — The Binder (optional)
+
+Cards can be published to [The Binder](https://peakd.com/c/hive-192941), a
+public Hive community that doubles as the app's storage backend: card photos
+go to the free `images.hive.blog` CDN and each card becomes a community post
+carrying its full record in `json_metadata`. No database anywhere. Set
+`HIVE_ACCOUNT` + `HIVE_POSTING_KEY` in `.env` to enable it — full walkthrough
+in [`docs/hive-setup.md`](docs/hive-setup.md). Publishing is per-card opt-in
+with an explicit "public and permanent" consent step.
+
 ### Plugging in a sold-price source
 
 The free default prices against **active eBay listings** — asking prices, which skew high. If you have access to actual sold data (a price-guide service like PriceCharting/SportsCardsPro or Card Hedge, or your own CardLadder exports), you can swap it in without touching the pipeline: implement the small adapter interface in [`server/app/pricing.py`](server/app/pricing.py) — a `source_type` of `"sold"` plus one async `search(query)` returning comp listings — register it, and set `PRICING_SOURCE=your_source` in `.env`. The verdict wording and the app's captions automatically switch from "asking prices" to "sold prices". See the module docstring in `app/pricing.py` for the three-step walkthrough.
@@ -73,8 +83,8 @@ The free default prices against **active eBay listings** — asking prices, whic
 
 ## Architecture
 
-- **`server/`** — FastAPI, fully stateless. BYO-AI passthrough (your key travels request → provider and is never persisted), eBay Browse API client, verdict logic. No database.
-- **`web/`** — Vite + React PWA. Camera capture, results, scan history. All state (settings, history) lives in localStorage — nothing leaves your device except the scan request itself.
+- **`server/`** — FastAPI. BYO-AI passthrough (your key travels request → provider and is never persisted), eBay Browse API client, verdict logic. No database — optional publishing goes to the Hive blockchain (`app/hive/`, a file-backed queue serializes posts to [The Binder](https://peakd.com/c/hive-192941) community).
+- **`web/`** — Vite + React PWA. Camera capture, results, scan history staged in IndexedDB, opt-in publishing to The Binder, and a Binder tab that browses the community feed. Nothing leaves your device except the scan request itself — until you explicitly publish a card.
 
 Design history and decisions: [`docs/plans/`](docs/plans/).
 
