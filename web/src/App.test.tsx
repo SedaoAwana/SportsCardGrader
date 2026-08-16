@@ -5,7 +5,13 @@ import { ApiError } from './api'
 import { loadHistory, saveSettings } from './storage'
 import type { ScanResponse } from './types'
 
-const mocks = vi.hoisted(() => ({ scanCard: vi.fn(), prepareImage: vi.fn(), pushHistory: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  scanCard: vi.fn(),
+  prepareImage: vi.fn(),
+  pushHistory: vi.fn(),
+  stageScan: vi.fn(),
+  migrateFromLocalStorage: vi.fn(),
+}))
 
 // Keep the health check quiet in tests (healthy server -> no banner, no state update).
 vi.mock('./api', async importOriginal => ({
@@ -25,6 +31,14 @@ vi.mock('./storage', async importOriginal => ({
 }))
 const realStorage = await vi.importActual<typeof import('./storage')>('./storage')
 
+// IndexedDB staging is unit-tested in binderDb.test.ts; here we only assert
+// the scan flow hands results to it (and falls back when it throws).
+vi.mock('./binderDb', async importOriginal => ({
+  ...(await importOriginal<typeof import('./binderDb')>()),
+  stageScan: (...args: unknown[]) => mocks.stageScan(...args),
+  migrateFromLocalStorage: (...args: unknown[]) => mocks.migrateFromLocalStorage(...args),
+}))
+
 // jsdom does not implement object URLs; the front-photo preview creates and revokes them.
 beforeAll(() => {
   URL.createObjectURL = vi.fn(() => 'blob:mock')
@@ -36,6 +50,8 @@ beforeEach(() => {
   mocks.scanCard.mockReset()
   mocks.prepareImage.mockReset().mockImplementation((f: File) => Promise.resolve(f))
   mocks.pushHistory.mockReset().mockImplementation(realStorage.pushHistory)
+  mocks.stageScan.mockReset().mockResolvedValue({ record_id: 'staged', status: 'draft' })
+  mocks.migrateFromLocalStorage.mockReset().mockResolvedValue(0)
 })
 
 const stubResponse: ScanResponse = {
@@ -79,7 +95,7 @@ test('shows scan view when settings exist, nav switches views', () => {
   expect(screen.getByText(/photograph card front/i)).toBeDefined()
 })
 
-test('successful scan pushes history and switches to results', async () => {
+test('successful scan stages the card with its prepared images', async () => {
   saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
   mocks.scanCard.mockResolvedValue(stubResponse)
   render(<App />)
@@ -87,8 +103,16 @@ test('successful scan pushes history and switches to results', async () => {
   // Real ResultsScreen: stubResponse has no verdict, so value is unavailable.
   await screen.findByText(/market value unavailable/i)
   expect(screen.getByRole('button', { name: /scan another/i })).toBeDefined()
-  expect(loadHistory()).toHaveLength(1)
+  expect(mocks.stageScan).toHaveBeenCalledWith(
+    stubResponse, null, mocks.prepareImage.mock.calls[0][0], null)
+  expect(loadHistory()).toHaveLength(0) // localStorage is only the fallback now
   expect(mocks.scanCard).toHaveBeenCalledOnce()
+})
+
+test('history migration runs once on app start', () => {
+  saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
+  render(<App />)
+  expect(mocks.migrateFromLocalStorage).toHaveBeenCalledOnce()
 })
 
 test('images are prepared before upload; scanCard gets the prepared files', async () => {
@@ -172,9 +196,23 @@ test('timed-out scan shows a friendly timeout message', async () => {
   expect(screen.getByRole('button', { name: /scan card/i })).toBeDefined()
 })
 
-test('result still renders when the history write throws', async () => {
+test('staging failure falls back to localStorage history', async () => {
   saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
   mocks.scanCard.mockResolvedValue(stubResponse)
+  mocks.stageScan.mockRejectedValue(new Error('IndexedDB unavailable'))
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  render(<App />)
+  pickFrontAndScan()
+  await screen.findByText(/market value unavailable/i)
+  expect(loadHistory()).toHaveLength(1)
+  expect(warn).toHaveBeenCalled()
+  warn.mockRestore()
+})
+
+test('result still renders when staging AND the fallback write throw', async () => {
+  saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
+  mocks.scanCard.mockResolvedValue(stubResponse)
+  mocks.stageScan.mockRejectedValue(new Error('IndexedDB unavailable'))
   mocks.pushHistory.mockImplementation(() => {
     throw new Error('QuotaExceededError: localStorage full')
   })
