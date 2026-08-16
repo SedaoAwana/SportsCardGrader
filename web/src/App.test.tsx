@@ -1,11 +1,11 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitForElementToBeRemoved } from '@testing-library/react'
 import { beforeAll, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
 import { ApiError } from './api'
 import { loadHistory, saveSettings } from './storage'
 import type { ScanResponse } from './types'
 
-const mocks = vi.hoisted(() => ({ scanCard: vi.fn(), prepareImage: vi.fn() }))
+const mocks = vi.hoisted(() => ({ scanCard: vi.fn(), prepareImage: vi.fn(), pushHistory: vi.fn() }))
 
 // Keep the health check quiet in tests (healthy server -> no banner, no state update).
 vi.mock('./api', async importOriginal => ({
@@ -17,6 +17,14 @@ vi.mock('./api', async importOriginal => ({
 // Real prepareImage needs canvas/createImageBitmap (absent in jsdom); pass through.
 vi.mock('./imagePrep', () => ({ prepareImage: mocks.prepareImage }))
 
+// pushHistory is swappable per-test (the history-write guard test makes it throw);
+// by default it delegates to the real implementation so history assertions hold.
+vi.mock('./storage', async importOriginal => ({
+  ...(await importOriginal<typeof import('./storage')>()),
+  pushHistory: (...args: unknown[]) => mocks.pushHistory(...args),
+}))
+const realStorage = await vi.importActual<typeof import('./storage')>('./storage')
+
 // jsdom does not implement object URLs; the front-photo preview creates and revokes them.
 beforeAll(() => {
   URL.createObjectURL = vi.fn(() => 'blob:mock')
@@ -27,6 +35,7 @@ beforeEach(() => {
   localStorage.clear()
   mocks.scanCard.mockReset()
   mocks.prepareImage.mockReset().mockImplementation((f: File) => Promise.resolve(f))
+  mocks.pushHistory.mockReset().mockImplementation(realStorage.pushHistory)
 })
 
 const stubResponse: ScanResponse = {
@@ -105,7 +114,8 @@ test('images are prepared before upload; scanCard gets the prepared files', asyn
   expect(mocks.prepareImage).toHaveBeenCalledTimes(2)
   expect(mocks.prepareImage).toHaveBeenCalledWith(rawFront)
   expect(mocks.prepareImage).toHaveBeenCalledWith(rawBack)
-  expect(mocks.scanCard).toHaveBeenCalledWith(prepFront, prepBack, null, expect.anything())
+  expect(mocks.scanCard).toHaveBeenCalledWith(
+    prepFront, prepBack, null, expect.anything(), expect.any(AbortSignal))
 })
 
 test('front-only scan prepares just the front image', async () => {
@@ -116,7 +126,8 @@ test('front-only scan prepares just the front image', async () => {
   await screen.findByText(/market value unavailable/i)
   expect(mocks.prepareImage).toHaveBeenCalledTimes(1)
   expect(mocks.scanCard).toHaveBeenCalledWith(
-    mocks.prepareImage.mock.calls[0][0], null, null, expect.anything())
+    mocks.prepareImage.mock.calls[0][0], null, null, expect.anything(),
+    expect.any(AbortSignal))
 })
 
 test('submit without settings redirects to settings view', () => {
@@ -126,6 +137,81 @@ test('submit without settings redirects to settings view', () => {
   pickFrontAndScan()
   expect(screen.getByText(/bring your own ai/i)).toBeDefined()
   expect(mocks.scanCard).not.toHaveBeenCalled()
+})
+
+test('scan overlay shows while busy; cancel aborts with no error, stays on scan', async () => {
+  saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
+  // Hang until aborted, then reject the way fetch does on controller.abort().
+  mocks.scanCard.mockImplementation((...args: unknown[]) => {
+    const signal = args[4] as AbortSignal
+    return new Promise((_, reject) =>
+      signal.addEventListener('abort', () =>
+        reject(new DOMException('The user aborted a request.', 'AbortError'))))
+  })
+  render(<App />)
+  pickFrontAndScan()
+
+  const overlay = await screen.findByRole('status')
+  expect(overlay).toBeDefined()
+  fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+
+  // Busy clears: overlay gone, scan button back to idle, and no error alert.
+  await waitForElementToBeRemoved(() => screen.queryByRole('status'))
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(screen.getByRole('button', { name: /scan card/i })).toBeDefined()
+})
+
+test('timed-out scan shows a friendly timeout message', async () => {
+  saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
+  // AbortSignal.timeout() aborts with a DOMException named TimeoutError.
+  mocks.scanCard.mockRejectedValue(new DOMException('signal timed out', 'TimeoutError'))
+  render(<App />)
+  pickFrontAndScan()
+  const alert = await screen.findByRole('alert')
+  expect(alert.textContent).toContain('Scan timed out. Check your connection and try again.')
+  expect(screen.getByRole('button', { name: /scan card/i })).toBeDefined()
+})
+
+test('result still renders when the history write throws', async () => {
+  saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
+  mocks.scanCard.mockResolvedValue(stubResponse)
+  mocks.pushHistory.mockImplementation(() => {
+    throw new Error('QuotaExceededError: localStorage full')
+  })
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  render(<App />)
+  pickFrontAndScan()
+  // The paid-for result must survive a failed history write.
+  await screen.findByText(/market value unavailable/i)
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(warn).toHaveBeenCalled()
+  warn.mockRestore()
+})
+
+test('header nav is disabled while a scan is in flight', async () => {
+  saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
+  let finish!: (r: ScanResponse) => void
+  mocks.scanCard.mockImplementation(() => new Promise(res => { finish = res }))
+  render(<App />)
+  pickFrontAndScan()
+  await screen.findByRole('status')
+  for (const name of ['Scan', 'History', 'Settings']) {
+    expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true)
+  }
+  finish(stubResponse)
+  await screen.findByText(/market value unavailable/i)
+  expect((screen.getByRole('button', { name: 'History' }) as HTMLButtonElement).disabled).toBe(false)
+})
+
+test('vibrates on scan success when the device supports it', async () => {
+  saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
+  const vibrate = vi.fn()
+  Object.defineProperty(navigator, 'vibrate', { value: vibrate, configurable: true, writable: true })
+  mocks.scanCard.mockResolvedValue(stubResponse)
+  render(<App />)
+  pickFrontAndScan()
+  await screen.findByText(/market value unavailable/i)
+  expect(vibrate).toHaveBeenCalledWith(50)
 })
 
 test('failed scan shows dismissible error and stays on scan view', async () => {

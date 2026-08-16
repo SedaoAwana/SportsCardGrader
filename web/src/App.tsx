@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
-import { ApiError, checkHealth, scanCard } from './api'
+import { useEffect, useRef, useState } from 'react'
+import { ApiError, checkHealth, SCAN_TIMEOUT_MS, scanCard } from './api'
 import { prepareImage } from './imagePrep'
+import ScanOverlay from './ScanOverlay'
 import HistoryScreen from './screens/HistoryScreen'
 import ResultsScreen from './screens/ResultsScreen'
 import ScanScreen from './screens/ScanScreen'
@@ -18,6 +19,9 @@ function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [serverDown, setServerDown] = useState(false)
+  // Front-photo object URL shown in the wait overlay; revoked when the scan ends.
+  const [scanPreviewUrl, setScanPreviewUrl] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     checkHealth().then(ok => {
@@ -31,6 +35,13 @@ function App() {
       setView('settings')
       return
     }
+    const controller = new AbortController()
+    abortRef.current = controller
+    // Combine user cancel with a hard client timeout. AbortSignal.any/timeout
+    // are Baseline-available (Chrome 116+, Edge 116+, Firefox 124+, Safari 17.4+).
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(SCAN_TIMEOUT_MS)])
+    const previewUrl = URL.createObjectURL(front)
+    setScanPreviewUrl(previewUrl)
     setBusy(true)
     setError(null)
     try {
@@ -39,15 +50,33 @@ function App() {
         prepareImage(front),
         back ? prepareImage(back) : Promise.resolve(null),
       ])
-      const response = await scanCard(prepFront, prepBack, askingPrice, settings)
-      pushHistory({ at: new Date().toISOString(), response, askingPrice: askingPrice ?? undefined })
+      const response = await scanCard(prepFront, prepBack, askingPrice, settings, signal)
+      // Show the paid-for result FIRST — the history write is best-effort and
+      // must never cost the seller a completed scan (e.g. localStorage full).
       setLastResult(response)
       setLastAskingPrice(askingPrice)
       setView('results')
+      try {
+        pushHistory({ at: new Date().toISOString(), response, askingPrice: askingPrice ?? undefined })
+      } catch (histErr) {
+        console.warn('Could not save scan to history:', histErr)
+      }
+      navigator.vibrate?.(50)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong. Try again.')
+      if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
+        // User cancel (controller fired) is silent; anything else abort-shaped
+        // is the client-side timeout.
+        if (!controller.signal.aborted) {
+          setError('Scan timed out. Check your connection and try again.')
+        }
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Something went wrong. Try again.')
+      }
     } finally {
       setBusy(false)
+      abortRef.current = null
+      setScanPreviewUrl(null)
+      URL.revokeObjectURL(previewUrl)
     }
   }
 
@@ -56,9 +85,11 @@ function App() {
       <header>
         <h1>Card Scanner</h1>
         <nav>
-          <button onClick={() => setView('scan')}>Scan</button>
-          <button onClick={() => setView('history')}>History</button>
-          <button onClick={() => setView('settings')}>Settings</button>
+          {/* Disabled while scanning: navigating mid-scan would teleport the
+              user away and orphan the in-flight result. */}
+          <button disabled={busy} onClick={() => setView('scan')}>Scan</button>
+          <button disabled={busy} onClick={() => setView('history')}>History</button>
+          <button disabled={busy} onClick={() => setView('settings')}>Settings</button>
         </nav>
       </header>
 
@@ -88,6 +119,10 @@ function App() {
           <ResultsScreen result={lastResult} onRescan={() => setView('scan')} />
         </>
       )}
+      {busy && (
+        <ScanOverlay previewUrl={scanPreviewUrl} onCancel={() => abortRef.current?.abort()} />
+      )}
+
       {view === 'history' && (
         <HistoryScreen
           onSelect={e => {
