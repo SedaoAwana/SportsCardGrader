@@ -193,9 +193,13 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
-/* Capture zones: dashed drop targets with card aspect ratio */
+/* Capture zones: dashed drop targets with card aspect ratio. Height is capped
+   so capture + back + price + CTA fit a phone viewport without scrolling; the
+   preview img stays object-fit: contain (cover would crop the card) and the
+   surface background quietly letterboxes any leftover space. */
 .capture {
   aspect-ratio: 2.5 / 3.5;
+  max-height: 55svh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -220,6 +224,61 @@ button:focus-visible {
   max-height: 100%;
   object-fit: contain;
   border-radius: 8px;
+}
+
+/* Asking price: label + preset chips + collapsible custom input */
+.price {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip:active {
+  background: var(--border);
+}
+
+.chip[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.chip[aria-pressed='true']:active {
+  background: var(--accent-press);
+}
+
+/* Sticky scan CTA: thumb-reach bottom bar. Negative margins stretch it across
+   the .screen padding to full column width; the opaque bg + top border keep
+   content scrolling underneath legible. */
+.scan-cta {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: 0 -16px -16px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.scan-cta button {
+  width: 100%;
 }
 
 /* Verdict hero: the money moment — full-width tinted panel, first on screen.
