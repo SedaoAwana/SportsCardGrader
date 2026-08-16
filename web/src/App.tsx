@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ApiError, checkHealth, SCAN_TIMEOUT_MS, scanCard } from './api'
 import { prepareImage } from './imagePrep'
 import ScanOverlay from './ScanOverlay'
+import BinderScreen from './screens/BinderScreen'
 import HistoryScreen from './screens/HistoryScreen'
 import ResultsScreen from './screens/ResultsScreen'
 import ScanScreen from './screens/ScanScreen'
@@ -10,7 +11,7 @@ import { migrateFromLocalStorage, stageScan } from './binderDb'
 import { loadSettings, pushHistory } from './storage'
 import type { ScanResponse } from './types'
 
-type View = 'scan' | 'results' | 'settings' | 'history'
+type View = 'scan' | 'results' | 'settings' | 'history' | 'binder'
 
 function App() {
   // First run: no saved settings yet, force onboarding.
@@ -98,6 +99,7 @@ function App() {
           {/* Disabled while scanning: navigating mid-scan would teleport the
               user away and orphan the in-flight result. */}
           <button disabled={busy} onClick={() => setView('scan')}>Scan</button>
+          <button disabled={busy} onClick={() => setView('binder')}>Binder</button>
           <button disabled={busy} onClick={() => setView('history')}>History</button>
           <button disabled={busy} onClick={() => setView('settings')}>Settings</button>
         </nav>
@@ -132,6 +134,8 @@ function App() {
       {busy && (
         <ScanOverlay previewUrl={scanPreviewUrl} onCancel={() => abortRef.current?.abort()} />
       )}
+
+      {view === 'binder' && <BinderScreen />}
 
       {view === 'history' && (
         <HistoryScreen

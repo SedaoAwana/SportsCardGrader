@@ -109,6 +109,15 @@ test('successful scan stages the card with its prepared images', async () => {
   expect(mocks.scanCard).toHaveBeenCalledOnce()
 })
 
+test('binder tab shows the community feed screen', async () => {
+  saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response(JSON.stringify({ cards: [], next: null }), { status: 200 }))
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'Binder' }))
+  expect(await screen.findByLabelText(/search the binder/i)).toBeDefined()
+})
+
 test('history migration runs once on app start', () => {
   saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
   render(<App />)
@@ -233,7 +242,7 @@ test('header nav is disabled while a scan is in flight', async () => {
   render(<App />)
   pickFrontAndScan()
   await screen.findByRole('status')
-  for (const name of ['Scan', 'History', 'Settings']) {
+  for (const name of ['Scan', 'Binder', 'History', 'Settings']) {
     expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true)
   }
   finish(stubResponse)

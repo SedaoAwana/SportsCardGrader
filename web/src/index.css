@@ -560,3 +560,17 @@ button:focus-visible {
   display: grid;
   gap: 10px;
 }
+
+/* Binder detail view */
+.binder-photo {
+  max-width: 100%;
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.binder-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
