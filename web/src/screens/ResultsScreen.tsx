@@ -42,7 +42,7 @@ export default function ResultsScreen({ result, onRescan }: Props) {
     )
   }
 
-  const { identity, condition, authenticity, ai_value_note } = vision
+  const { identity, condition, slab, authenticity, ai_value_note } = vision
 
   return (
     <div className="screen">
@@ -58,6 +58,12 @@ export default function ResultsScreen({ result, onRescan }: Props) {
             <p className="warning">Identification uncertain — price may not be reliable</p>
           )}
         </section>
+      )}
+
+      {slab && (
+        <span className="slab-badge">
+          {slab.company} {slab.grade} slab
+        </span>
       )}
 
       {authenticity && (
@@ -79,7 +85,8 @@ export default function ResultsScreen({ result, onRescan }: Props) {
         </section>
       )}
 
-      {condition && (
+      {/* No estimated grade range for a slab — the label already graded it. */}
+      {condition && !slab && (
         <section className="grade">
           <h3>
             PSA {fmt(condition.grade_low)}–{fmt(condition.grade_high)}

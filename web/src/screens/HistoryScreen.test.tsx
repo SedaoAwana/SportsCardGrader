@@ -39,6 +39,21 @@ test('renders a row and onSelect fires with the entry', () => {
   expect(onSelect.mock.calls[0][0]).toEqual(entry)
 })
 
+test('row title appends the slab when present', () => {
+  const slabbed = structuredClone(response)
+  slabbed.vision.condition = null
+  slabbed.vision.slab = { company: 'PSA', grade: '9' }
+  pushHistory({ at: '2026-08-06T12:00:00.000Z', response: slabbed })
+  render(<HistoryScreen onSelect={() => {}} />)
+  expect(screen.getByText('Luka Doncic · PSA 9')).toBeTruthy()
+})
+
+test('non-slab row title is just the player', () => {
+  pushHistory({ at: '2026-08-06T12:00:00.000Z', response })
+  render(<HistoryScreen onSelect={() => {}} />)
+  expect(screen.getByText('Luka Doncic')).toBeTruthy()
+})
+
 test('row without identity shows "Unreadable photo"', () => {
   const bad: ScanResponse = {
     vision: { photo_ok: false, photo_issue: 'blur', identity: null,

@@ -32,11 +32,20 @@ export interface Authenticity {
   risk: Risk
 }
 
+export type SlabCompany = 'PSA' | 'BGS' | 'SGC' | 'CGC' | 'TAG'
+
+export interface Slab {
+  company: SlabCompany
+  grade: string // "9", "9.5", "10", ... — string because "Authentic" slabs exist
+}
+
 export interface VisionResult {
   photo_ok: boolean
   photo_issue: string | null // auto-filled server-side when photo_ok is false
   identity: Identity | null
-  condition: Condition | null
+  condition: Condition | null // null for slabbed cards — the slab already graded it
+  // Optional (not `| null`) so history entries saved before slab support still type-check.
+  slab?: Slab | null
   authenticity: Authenticity | null
   ai_value_note: string | null // model's rough value memory; fallback when comps are empty
 }

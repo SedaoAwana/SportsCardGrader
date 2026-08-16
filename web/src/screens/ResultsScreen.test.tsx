@@ -128,6 +128,33 @@ test('low_value verdict renders "too cheap to call" badge', () => {
   expect(badge.className).toContain('verdict-low_value')
 })
 
+test('slab response renders badge and no estimated grade range', () => {
+  const r = structuredClone(base)
+  r.vision.condition = null // the slab already graded it
+  r.vision.slab = { company: 'PSA', grade: '9' }
+  r.verdict = { value_low: 100, value_high: 150, verdict: 'fair',
+                reasoning: 'PSA 9 copies range $100–$150 based on 4 listings.' }
+  render(<ResultsScreen result={r} onRescan={() => {}} />)
+  const badge = screen.getByText('PSA 9 slab')
+  expect(badge.className).toContain('slab-badge')
+  // No "PSA X–Y" estimated-condition heading for a professionally graded card.
+  expect(screen.queryByText(/PSA \d+(\.\d+)?–\d+/)).toBeNull()
+})
+
+test('slab hides the estimated grade range even if condition sneaks through', () => {
+  // Defensive: if the model returns both slab and condition, the slab wins.
+  const r = structuredClone(base)
+  r.vision.slab = { company: 'BGS', grade: '9.5' }
+  render(<ResultsScreen result={r} onRescan={() => {}} />)
+  expect(screen.getByText('BGS 9.5 slab')).toBeTruthy()
+  expect(screen.queryByText(/PSA 6–8/)).toBeNull()
+})
+
+test('non-slab response shows no slab badge', () => {
+  render(<ResultsScreen result={base} onRescan={() => {}} />)
+  expect(screen.queryByText(/slab/i)).toBeNull()
+})
+
 test('high_value verdict renders "verify first" badge', () => {
   const r = structuredClone(base)
   r.verdict = { value_low: 800, value_high: 1500, verdict: 'high_value',

@@ -22,11 +22,13 @@ export default function HistoryScreen({ onSelect }: Props) {
       <ul className="history">
         {history.map((entry, i) => {
           const verdict = entry.response.verdict
+          const slab = entry.response.vision.slab
           return (
             <li key={`${entry.at}-${i}`}>
               <button className="history-row" onClick={() => onSelect(entry)}>
                 <span className="player">
                   {entry.response.vision.identity?.player ?? 'Unreadable photo'}
+                  {slab ? ` · ${slab.company} ${slab.grade}` : ''}
                 </span>
                 <span className="date">{new Date(entry.at).toLocaleDateString()}</span>
                 {verdict && (
