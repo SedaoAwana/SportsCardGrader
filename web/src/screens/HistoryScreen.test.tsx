@@ -1,11 +1,29 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import 'fake-indexeddb/auto'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import HistoryScreen from './HistoryScreen'
-import { pushHistory } from '../storage'
-import type { HistoryEntry, ScanResponse } from '../types'
+import { _resetDbForTests, listStaged, setStatus, stageScan } from '../binderDb'
+import type { ScanResponse } from '../types'
 
-beforeEach(() => {
+const mocks = vi.hoisted(() => ({
+  publishCard: vi.fn(),
+  getPublishStatus: vi.fn(),
+  resumePendingPublishes: vi.fn(),
+}))
+
+vi.mock('../binderApi', async importOriginal => ({
+  ...(await importOriginal<typeof import('../binderApi')>()),
+  publishCard: mocks.publishCard,
+  getPublishStatus: mocks.getPublishStatus,
+  resumePendingPublishes: mocks.resumePendingPublishes,
+}))
+
+beforeEach(async () => {
   localStorage.clear()
+  await _resetDbForTests()
+  mocks.publishCard.mockReset()
+  mocks.getPublishStatus.mockReset()
+  mocks.resumePendingPublishes.mockReset().mockResolvedValue(undefined)
 })
 
 const response: ScanResponse = {
@@ -22,45 +40,83 @@ const response: ScanResponse = {
   verdict: { value_low: 60, value_high: 90, verdict: 'undervalued', reasoning: 'Cheap!' },
 }
 
-test('empty state shows "No scans yet."', () => {
+function blob(text = 'img') {
+  return new Blob([text], { type: 'image/jpeg' })
+}
+
+test('empty state shows "No scans yet."', async () => {
   render(<HistoryScreen onSelect={() => {}} />)
-  expect(screen.getByText(/no scans yet/i)).toBeTruthy()
+  expect(await screen.findByText(/no scans yet/i)).toBeTruthy()
 })
 
-test('renders a row and onSelect fires with the entry', () => {
-  const entry: HistoryEntry = { at: '2026-08-06T12:00:00.000Z', response, askingPrice: 50 }
-  pushHistory(entry)
+test('renders staged rows and onSelect fires with the card', async () => {
+  await stageScan(response, 50, blob(), null)
   const onSelect = vi.fn()
   render(<HistoryScreen onSelect={onSelect} />)
-  const row = screen.getByText(/Luka Doncic/)
+  const row = await screen.findByText(/Luka Doncic/)
   expect(screen.getByText('Undervalued')).toBeTruthy() // human label, not raw enum
+  expect(screen.getByText('Draft')).toBeTruthy()
   fireEvent.click(row)
   expect(onSelect).toHaveBeenCalledOnce()
-  expect(onSelect.mock.calls[0][0]).toEqual(entry)
+  expect(onSelect.mock.calls[0][0].response).toEqual(response)
+  expect(onSelect.mock.calls[0][0].askingPrice).toBe(50)
 })
 
-test('row title appends the slab when present', () => {
-  const slabbed = structuredClone(response)
-  slabbed.vision.condition = null
-  slabbed.vision.slab = { company: 'PSA', grade: '9' }
-  pushHistory({ at: '2026-08-06T12:00:00.000Z', response: slabbed })
+test('publish flow: consent dialog, then queued chip', async () => {
+  const card = await stageScan(response, null, blob(), null)
+  mocks.publishCard.mockResolvedValue({
+    job_id: card.record_id, permlink: 'card-luka', status: 'queued',
+    position: 2, eta_seconds: 300, hive_url: null, last_error: null,
+  })
   render(<HistoryScreen onSelect={() => {}} />)
-  expect(screen.getByText('Luka Doncic · PSA 9')).toBeTruthy()
+  fireEvent.click(await screen.findByRole('button', { name: /publish to the binder/i }))
+  const dialog = await screen.findByRole('dialog')
+  expect(dialog.textContent).toMatch(/public/i)
+  expect(dialog.textContent).toMatch(/permanent/i)
+  expect(mocks.publishCard).not.toHaveBeenCalled() // nothing sent before consent
+  fireEvent.click(screen.getByRole('button', { name: /^publish$/i }))
+  await screen.findByText(/in queue/i)
+  expect(mocks.publishCard).toHaveBeenCalledOnce()
+  expect((await listStaged())[0]).toMatchObject({ status: 'queued', job_id: card.record_id })
 })
 
-test('non-slab row title is just the player', () => {
-  pushHistory({ at: '2026-08-06T12:00:00.000Z', response })
+test('consent can be declined', async () => {
+  await stageScan(response, null, blob(), null)
   render(<HistoryScreen onSelect={() => {}} />)
-  expect(screen.getByText('Luka Doncic')).toBeTruthy()
+  fireEvent.click(await screen.findByRole('button', { name: /publish to the binder/i }))
+  fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(mocks.publishCard).not.toHaveBeenCalled()
 })
 
-test('row without identity shows "Unreadable photo"', () => {
-  const bad: ScanResponse = {
-    vision: { photo_ok: false, photo_issue: 'blur', identity: null,
-              condition: null, authenticity: null, ai_value_note: null },
-    comps: null, comps_error: null, verdict: null,
-  }
-  pushHistory({ at: '2026-08-06T12:00:00.000Z', response: bad })
+test('legacy rows cannot be published', async () => {
+  const card = await stageScan(response, null, blob(), null)
+  await setStatus(card.record_id, { legacy: true })
   render(<HistoryScreen onSelect={() => {}} />)
-  expect(screen.getByText(/unreadable photo/i)).toBeTruthy()
+  await screen.findByText(/Luka Doncic/)
+  expect(screen.queryByRole('button', { name: /publish to the binder/i })).toBeNull()
+})
+
+test('published rows link to the hive post', async () => {
+  const card = await stageScan(response, null, blob(), null)
+  await setStatus(card.record_id, {
+    status: 'published', hive_url: 'https://peakd.com/@thebinder/card-luka',
+  })
+  render(<HistoryScreen onSelect={() => {}} />)
+  const link = await screen.findByRole('link', { name: /view on hive/i })
+  expect(link.getAttribute('href')).toBe('https://peakd.com/@thebinder/card-luka')
+})
+
+test('poller promotes queued cards when the server confirms', async () => {
+  const card = await stageScan(response, null, blob(), null)
+  await setStatus(card.record_id, { status: 'queued', job_id: card.record_id })
+  mocks.getPublishStatus.mockResolvedValue({
+    job_id: card.record_id, permlink: 'card-luka', status: 'confirmed',
+    position: 0, eta_seconds: 0,
+    hive_url: 'https://peakd.com/@thebinder/card-luka', last_error: null,
+  })
+  render(<HistoryScreen onSelect={() => {}} />)
+  await screen.findByText('Published')
+  await waitFor(async () =>
+    expect((await listStaged())[0].status).toBe('published'))
 })

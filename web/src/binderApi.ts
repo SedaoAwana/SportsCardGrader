@@ -1,0 +1,115 @@
+// API calls for publishing to and reading from The Binder (style of api.ts).
+
+import { ApiError } from './api'
+import { clientId, getImages, listStaged, setStatus } from './binderDb'
+import type {
+  BinderCard,
+  CardRecordDraft,
+  HiveStatus,
+  PublishJobStatus,
+  StagedCard,
+} from './binderTypes'
+
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let resp: Response
+  try {
+    resp = await fetch(`${API_BASE}${path}`, init)
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') throw err
+    throw new ApiError('Could not reach the server. Check your connection.')
+  }
+  if (!resp.ok) {
+    const detail = await resp.json().then(b => b.detail).catch(() => null)
+    throw new ApiError(detail ?? `Request failed (${resp.status}). Try again.`)
+  }
+  return resp.json()
+}
+
+// Build the publishable record from a staged scan. The server completes it
+// with the uploaded image URLs.
+export function toDraft(staged: StagedCard): CardRecordDraft {
+  const { vision, comps, verdict } = staged.response
+  if (!vision.identity) {
+    throw new ApiError('This scan could not read the card, so it cannot be published.')
+  }
+  return {
+    v: 1,
+    kind: 'card',
+    record_id: staged.record_id,
+    identity: vision.identity,
+    condition: vision.condition,
+    slab: vision.slab ?? null,
+    authenticity: vision.authenticity,
+    verdict,
+    comps: comps ? { summary: comps, top_sales: [], as_of: staged.at } : null,
+    asking_price: staged.askingPrice ?? null,
+    attribution: { client_id: clientId(), display_name: null },
+    scanned_at: staged.at,
+  }
+}
+
+export async function publishCard(
+  staged: StagedCard,
+  front: Blob,
+  back: Blob | null,
+): Promise<PublishJobStatus> {
+  const form = new FormData()
+  form.append('record', JSON.stringify(toDraft(staged)))
+  form.append('front', front, 'front.jpg')
+  if (back) form.append('back', back, 'back.jpg')
+  return request<PublishJobStatus>('/api/publish', { method: 'POST', body: form })
+}
+
+export function getPublishStatus(jobId: string): Promise<PublishJobStatus> {
+  return request(`/api/publish/${encodeURIComponent(jobId)}`)
+}
+
+export function listBinder(cursor?: {
+  start_author: string
+  start_permlink: string
+}): Promise<{ cards: BinderCard[]; next: { start_author: string; start_permlink: string } | null }> {
+  const params = new URLSearchParams({ limit: '20' })
+  if (cursor) {
+    params.set('start_author', cursor.start_author)
+    params.set('start_permlink', cursor.start_permlink)
+  }
+  return request(`/api/cards?${params}`)
+}
+
+export function getBinderCard(permlink: string): Promise<BinderCard> {
+  return request(`/api/cards/${encodeURIComponent(permlink)}`)
+}
+
+export function refreshComps(permlink: string): Promise<{ job_id: string }> {
+  return request(`/api/cards/${encodeURIComponent(permlink)}/refresh-comps`,
+                 { method: 'POST' })
+}
+
+export async function hiveStatus(): Promise<HiveStatus> {
+  try {
+    return await request<HiveStatus>('/api/hive/status')
+  } catch {
+    return { configured: false }
+  }
+}
+
+// Re-submit consented publishes that never reached the server (offline at
+// tap time). Safe to call anytime: the server is idempotent on record_id.
+export async function resumePendingPublishes(): Promise<void> {
+  const staged = await listStaged()
+  for (const card of staged) {
+    if (card.status !== 'draft' || !card.publishRequested || card.legacy) continue
+    const images = await getImages(card.record_id)
+    if (!images) continue
+    try {
+      const job = await publishCard(card, images.front, images.back)
+      await setStatus(card.record_id, {
+        status: 'queued', job_id: job.job_id, permlink: job.permlink,
+      })
+    } catch {
+      // Still offline (or server down) — stays publishRequested for next sweep.
+    }
+  }
+}

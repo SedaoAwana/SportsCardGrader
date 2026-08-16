@@ -4,11 +4,24 @@ Two pieces: the FastAPI server (`server/`) and the static web app (`web/dist`). 
 
 ## 1. Deploy the server (Fly.io or Railway)
 
+> **Request timeout:** a scan holds the request open for the whole AI pipeline.
+> The server self-limits at 55 seconds, so the platform/load-balancer request
+> timeout must exceed **60 seconds** — otherwise the LB cuts the scan mid-flight
+> and the client sees a generic gateway error instead of the server's 504.
+> (Fly.io and Railway defaults are fine; check `idle_timeout`/proxy settings if
+> you front the server with your own nginx/ALB.)
+
 The server just needs Python 3.12 and this start command:
 
 ```
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
+
+> **Hive publishing (optional):** set `HIVE_ACCOUNT` and `HIVE_POSTING_KEY`
+> (posting key only) to enable publishing to The Binder — see
+> [`docs/hive-setup.md`](docs/hive-setup.md). The publish queue persists to
+> `data/publish_queue/` on local disk, so give the server a persistent volume
+> and run a SINGLE instance — replicas would double-post to the chain.
 
 ### Fly.io
 
