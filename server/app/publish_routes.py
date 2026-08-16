@@ -6,6 +6,7 @@ configured the app still runs fully — these endpoints just answer 503.
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Annotated, Optional
 
 import httpx
@@ -13,10 +14,19 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from app import scan as scan_module
 from app.hive.client import HiveClient
 from app.hive.images import ImageInvalid, ImageUploadError, upload_image
 from app.hive.queue import PublishJob, PublishQueue
-from app.hive.record import CardImages, CardRecord, CardRecordDraft
+from app.hive.record import (
+    TITLE_CAP,
+    TOP_SALES_CAP,
+    CardComps,
+    CardImages,
+    CardRecord,
+    CardRecordDraft,
+)
+from app.schemas import VisionResult
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +172,34 @@ async def card_detail(request: Request, permlink: str):
         raise HTTPException(404, "No such card in The Binder.")
     entry["hive_url"] = f"https://peakd.com/@{state.client.account}/{permlink}"
     return entry
+
+
+@router.post("/api/cards/{permlink}/refresh-comps", status_code=202)
+async def refresh_card_comps(request: Request, permlink: str):
+    """Re-run comps + verdict for a published card and queue a post edit."""
+    state = _state(request)
+    post = await state.client.get_post(state.client.account, permlink)
+    entry = _parse_card_post(post) if post else None
+    if entry is None:
+        raise HTTPException(404, "No such card in The Binder.")
+    record = CardRecord.model_validate(entry["card"])
+    vision = VisionResult(photo_ok=True, identity=record.identity,
+                          condition=record.condition, slab=record.slab,
+                          authenticity=record.authenticity)
+    comps, verdict, listings, comps_error = await scan_module.price_vision(
+        vision, record.asking_price)
+    if comps_error is not None or comps is None:
+        raise HTTPException(502, f"Comps refresh failed: {comps_error or 'no data'}")
+    updated = record.model_copy(update={
+        "comps": CardComps(
+            summary=comps,
+            top_sales=[item.model_copy(update={"title": item.title[:TITLE_CAP]})
+                       for item in listings[:TOP_SALES_CAP]],
+            as_of=datetime.now(timezone.utc).isoformat(timespec="seconds")),
+        "verdict": verdict,
+    })
+    job = state.queue.enqueue(updated, kind="update")
+    return _job_payload(job, state.queue)
 
 
 @router.get("/api/hive/status")

@@ -122,3 +122,38 @@ def test_card_detail(client, records, hive):
 
 def test_card_detail_404_for_missing_or_non_card(client):
     assert client.get("/api/cards/nope").status_code == 404
+
+
+class FakeSource:
+    source_type = "active_listings"
+
+
+def test_refresh_comps_enqueues_an_update(client, records, hive, monkeypatch):
+    from app import scan as scan_module
+    from app.schemas import CompListing
+
+    fresh = [CompListing(title=f"fresh {i}", price=80.0 + i, graded=False)
+             for i in range(3)]
+
+    async def fake_search(query):
+        assert "Luka Doncic" in query
+        return fresh
+
+    monkeypatch.setattr(scan_module, "search_comps", fake_search)
+    monkeypatch.setattr(scan_module, "_get_pricing_source", lambda: FakeSource())
+
+    permlink = card_permlink(records[0])
+    hive.posts[permlink] = as_bridge_post(records[0])
+    resp = client.post(f"/api/cards/{permlink}/refresh-comps")
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+    job = app.state.hive.queue.get_job(job_id)
+    assert job.kind == "update"
+    assert job.permlink == permlink
+    assert [s.title for s in job.record.comps.top_sales] == [c.title for c in fresh]
+    assert job.record.comps.summary.raw_count == 3
+    assert job.record.verdict is not None
+
+
+def test_refresh_comps_404_for_unknown_card(client):
+    assert client.post("/api/cards/nope/refresh-comps").status_code == 404
