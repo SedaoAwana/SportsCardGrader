@@ -89,6 +89,9 @@ async def publish(
                             content=_job_payload(existing, state.queue))
 
     async def _upload(upload: UploadFile) -> str:
+        if state.dry_run:
+            # Rehearsal mode: uploads are permanent, so never touch the CDN.
+            return f"dry-run://{upload.filename or 'card.jpg'}"
         try:
             return await upload_image(
                 await upload.read(), upload.filename or "card.jpg",

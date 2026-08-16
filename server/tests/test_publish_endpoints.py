@@ -100,6 +100,18 @@ def test_job_status_roundtrip(client):
     assert client.get("/api/publish/nope").status_code == 404
 
 
+def test_dry_run_skips_image_upload(client):
+    # A dry-run rehearsal must not push permanent bytes to the real CDN.
+    state = app.state.hive
+    state.dry_run = True
+    state.http = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: (_ for _ in ()).throw(AssertionError("network used in dry run"))))
+    resp = post_publish(client)
+    assert resp.status_code == 202
+    job = state.queue.get_job(resp.json()["job_id"])
+    assert job.record.images.front.startswith("dry-run://")
+
+
 def test_hive_status_unconfigured(client_unconfigured):
     body = client_unconfigured.get("/api/hive/status").json()
     assert body == {"configured": False}
