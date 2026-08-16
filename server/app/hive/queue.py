@@ -118,6 +118,12 @@ class PublishQueue:
                 return i
         return 0
 
+    def eta_for(self, job_id: str) -> float:
+        pos = self.position(job_id)
+        if pos == 0:
+            return 0.0
+        return self._cooldown("create") + (pos - 1) * self.root_interval
+
     def status(self) -> dict:
         depth = len(self._queued())
         return {

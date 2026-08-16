@@ -29,6 +29,10 @@ class ImageUploadError(Exception):
     """User-safe message; details are logged."""
 
 
+class ImageInvalid(ImageUploadError):
+    """The image itself is unacceptable (type/size) — a client error."""
+
+
 def _is_canonical(sig: bytes) -> bool:
     return (not (sig[0] & 0x80)
             and not (sig[0] == 0 and not (sig[1] & 0x80))
@@ -80,9 +84,9 @@ def sign_image_challenge(data: bytes, posting_key_wif: str) -> str:
 
 def _validate(data: bytes) -> None:
     if len(data) > MAX_IMAGE_BYTES:
-        raise ImageUploadError("Image too large to publish (5MB max).")
+        raise ImageInvalid("Image too large to publish (5MB max).")
     if not any(data.startswith(magic) for magic in ALLOWED_MAGIC):
-        raise ImageUploadError("Only JPEG, PNG, or WebP images can be published.")
+        raise ImageInvalid("Only JPEG, PNG, or WebP images can be published.")
 
 
 async def upload_image(data: bytes, filename: str, *, account: str, posting_key: str,
