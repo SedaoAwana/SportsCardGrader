@@ -261,6 +261,39 @@ test('vibrates on scan success when the device supports it', async () => {
   expect(vibrate).toHaveBeenCalledWith(50)
 })
 
+test('asking price flows into the verdict hero; no orphaned caption', async () => {
+  saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
+  const verdictResponse: ScanResponse = {
+    ...stubResponse,
+    verdict: { value_low: 50, value_high: 70, verdict: 'undervalued', reasoning: 'Cheap!' },
+  }
+  mocks.scanCard.mockResolvedValue(verdictResponse)
+  render(<App />)
+  fireEvent.change(screen.getByLabelText(/asking price/i), { target: { value: '20' } })
+  pickFrontAndScan()
+  // Delta proves askingPrice reached ResultsScreen: midpoint 60 − ask 20 = 40.
+  await screen.findByText('≈ $40 below market')
+  // The old standalone "Asking price: $N" caption is gone.
+  expect(screen.queryByText(/^Asking price: \$/)).toBeNull()
+})
+
+test('reopening a scan from history restores its asking price', async () => {
+  saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
+  const verdictResponse: ScanResponse = {
+    ...stubResponse,
+    verdict: { value_low: 50, value_high: 70, verdict: 'undervalued', reasoning: 'Cheap!' },
+  }
+  mocks.scanCard.mockResolvedValue(verdictResponse)
+  render(<App />)
+  fireEvent.change(screen.getByLabelText(/asking price/i), { target: { value: '20' } })
+  pickFrontAndScan()
+  await screen.findByText('≈ $40 below market')
+
+  fireEvent.click(screen.getByRole('button', { name: 'History' }))
+  fireEvent.click(screen.getByRole('button', { name: /unreadable photo/i }))
+  expect(await screen.findByText('≈ $40 below market')).toBeDefined()
+})
+
 test('failed scan shows dismissible error and stays on scan view', async () => {
   saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
   mocks.scanCard.mockRejectedValue(new ApiError('Scan failed (500). Try again.'))

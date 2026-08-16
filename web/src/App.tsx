@@ -124,12 +124,11 @@ function App() {
         </>
       )}
       {view === 'results' && lastResult && (
-        <>
-          {lastAskingPrice != null && (
-            <p className="caption">Asking price: ${lastAskingPrice}</p>
-          )}
-          <ResultsScreen result={lastResult} onRescan={() => setView('scan')} />
-        </>
+        <ResultsScreen
+          result={lastResult}
+          askingPrice={lastAskingPrice}
+          onRescan={() => setView('scan')}
+        />
       )}
       {busy && (
         <ScanOverlay previewUrl={scanPreviewUrl} onCancel={() => abortRef.current?.abort()} />
