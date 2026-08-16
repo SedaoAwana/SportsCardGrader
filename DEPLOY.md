@@ -17,6 +17,12 @@ The server just needs Python 3.12 and this start command:
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+> **Hive publishing (optional):** set `HIVE_ACCOUNT` and `HIVE_POSTING_KEY`
+> (posting key only) to enable publishing to The Binder — see
+> [`docs/hive-setup.md`](docs/hive-setup.md). The publish queue persists to
+> `data/publish_queue/` on local disk, so give the server a persistent volume
+> and run a SINGLE instance — replicas would double-post to the chain.
+
 ### Fly.io
 
 ```bash
