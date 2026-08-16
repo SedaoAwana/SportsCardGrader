@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ApiError, checkHealth, scanCard } from './api'
+import { prepareImage } from './imagePrep'
 import HistoryScreen from './screens/HistoryScreen'
 import ResultsScreen from './screens/ResultsScreen'
 import ScanScreen from './screens/ScanScreen'
@@ -33,7 +34,12 @@ function App() {
     setBusy(true)
     setError(null)
     try {
-      const response = await scanCard(front, back, askingPrice, settings)
+      // Downscale/re-encode to JPEG before upload; previews keep the originals.
+      const [prepFront, prepBack] = await Promise.all([
+        prepareImage(front),
+        back ? prepareImage(back) : Promise.resolve(null),
+      ])
+      const response = await scanCard(prepFront, prepBack, askingPrice, settings)
       pushHistory({ at: new Date().toISOString(), response, askingPrice: askingPrice ?? undefined })
       setLastResult(response)
       setLastAskingPrice(askingPrice)

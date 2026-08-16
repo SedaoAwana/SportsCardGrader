@@ -5,7 +5,7 @@ import { ApiError } from './api'
 import { loadHistory, saveSettings } from './storage'
 import type { ScanResponse } from './types'
 
-const mocks = vi.hoisted(() => ({ scanCard: vi.fn() }))
+const mocks = vi.hoisted(() => ({ scanCard: vi.fn(), prepareImage: vi.fn() }))
 
 // Keep the health check quiet in tests (healthy server -> no banner, no state update).
 vi.mock('./api', async importOriginal => ({
@@ -13,6 +13,9 @@ vi.mock('./api', async importOriginal => ({
   checkHealth: () => Promise.resolve(true),
   scanCard: mocks.scanCard,
 }))
+
+// Real prepareImage needs canvas/createImageBitmap (absent in jsdom); pass through.
+vi.mock('./imagePrep', () => ({ prepareImage: mocks.prepareImage }))
 
 // jsdom does not implement object URLs; the front-photo preview creates and revokes them.
 beforeAll(() => {
@@ -23,6 +26,7 @@ beforeAll(() => {
 beforeEach(() => {
   localStorage.clear()
   mocks.scanCard.mockReset()
+  mocks.prepareImage.mockReset().mockImplementation((f: File) => Promise.resolve(f))
 })
 
 const stubResponse: ScanResponse = {
@@ -76,6 +80,43 @@ test('successful scan pushes history and switches to results', async () => {
   expect(screen.getByRole('button', { name: /scan another/i })).toBeDefined()
   expect(loadHistory()).toHaveLength(1)
   expect(mocks.scanCard).toHaveBeenCalledOnce()
+})
+
+test('images are prepared before upload; scanCard gets the prepared files', async () => {
+  saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
+  mocks.scanCard.mockResolvedValue(stubResponse)
+  const rawFront = new File(['raw-front'], 'front.heic', { type: 'image/heic' })
+  const rawBack = new File(['raw-back'], 'back.heic', { type: 'image/heic' })
+  const prepFront = new File(['prep-front'], 'front.jpg', { type: 'image/jpeg' })
+  const prepBack = new File(['prep-back'], 'back.jpg', { type: 'image/jpeg' })
+  mocks.prepareImage.mockImplementation((f: File) =>
+    Promise.resolve(f === rawFront ? prepFront : prepBack))
+
+  render(<App />)
+  fireEvent.change(screen.getByLabelText(/photograph card front/i), {
+    target: { files: [rawFront] },
+  })
+  fireEvent.change(screen.getByLabelText(/back \(optional\)/i), {
+    target: { files: [rawBack] },
+  })
+  fireEvent.click(screen.getByRole('button', { name: /scan card/i }))
+
+  await screen.findByText(/market value unavailable/i)
+  expect(mocks.prepareImage).toHaveBeenCalledTimes(2)
+  expect(mocks.prepareImage).toHaveBeenCalledWith(rawFront)
+  expect(mocks.prepareImage).toHaveBeenCalledWith(rawBack)
+  expect(mocks.scanCard).toHaveBeenCalledWith(prepFront, prepBack, null, expect.anything())
+})
+
+test('front-only scan prepares just the front image', async () => {
+  saveSettings({ provider: 'anthropic', apiKey: 'sk-test' })
+  mocks.scanCard.mockResolvedValue(stubResponse)
+  render(<App />)
+  pickFrontAndScan()
+  await screen.findByText(/market value unavailable/i)
+  expect(mocks.prepareImage).toHaveBeenCalledTimes(1)
+  expect(mocks.scanCard).toHaveBeenCalledWith(
+    mocks.prepareImage.mock.calls[0][0], null, null, expect.anything())
 })
 
 test('submit without settings redirects to settings view', () => {
