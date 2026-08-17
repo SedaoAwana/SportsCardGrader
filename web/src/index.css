@@ -590,7 +590,9 @@ button:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .spinner {
-    animation-duration: 2s;
+    /* Static ring for reduced motion; the staged copy still shows progress. */
+    animation: none;
+    border-top-color: var(--muted);
   }
 }
 

@@ -33,6 +33,8 @@ export default defineConfig({
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api\//],
         // Scans are paid, personalized calls — never serve one from cache.
+        // (This rule matches GETs like /api/health; POST /api/scan is safe
+        // because workbox never caches non-GET requests at all.)
         // Cross-origin requests are untouched (workbox default: no caching).
         runtimeCaching: [
           {

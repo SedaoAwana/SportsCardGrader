@@ -55,14 +55,19 @@ function App() {
       setView('settings')
       return
     }
+    if (busy) return // health re-probe below can take seconds; block double-taps
     // Banner says the server is down: re-probe before burning an upload over a
     // dead link. If it recovered, the banner clears and the scan proceeds.
     if (serverDown && !(await recheckHealth())) return
     const controller = new AbortController()
     abortRef.current = controller
     // Combine user cancel with a hard client timeout. AbortSignal.any/timeout
-    // are Baseline-available (Chrome 116+, Edge 116+, Firefox 124+, Safari 17.4+).
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(SCAN_TIMEOUT_MS)])
+    // are Baseline-available (Chrome 116+, Firefox 124+, Safari 17.4+); on older
+    // browsers degrade to cancel-only rather than throwing before the try block.
+    const signal =
+      'any' in AbortSignal && 'timeout' in AbortSignal
+        ? AbortSignal.any([controller.signal, AbortSignal.timeout(SCAN_TIMEOUT_MS)])
+        : controller.signal
     const previewUrl = URL.createObjectURL(front)
     setScanPreviewUrl(previewUrl)
     setBusy(true)

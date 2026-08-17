@@ -40,7 +40,8 @@ function evidenceCaption(comps: CompsSummary): string | null {
 function DeltaLine({ verdict, askingPrice }: { verdict: Verdict; askingPrice: number | null }) {
   if (askingPrice == null) return null
   if (verdict.verdict === 'fair') {
-    return <p className="delta">${Math.round(askingPrice)} asking · in range</p>
+    // The supporting line below already shows "· asking $N" — don't repeat it.
+    return <p className="delta">In range</p>
   }
   if (verdict.verdict !== 'undervalued' && verdict.verdict !== 'overpriced') return null
   if (verdict.value_low == null || verdict.value_high == null) return null

@@ -61,7 +61,9 @@ test('fair verdict shows "in range" instead of a delta', () => {
   const r = structuredClone(base)
   r.verdict = { value_low: 60, value_high: 90, verdict: 'fair', reasoning: 'Right in range.' }
   renderResults(r, 70)
-  expect(screen.getByText('$70 asking · in range')).toBeTruthy()
+  // Ask appears once, in the supporting line — the delta line stays terse.
+  expect(screen.getByText('In range')).toBeTruthy()
+  expect(screen.getByText(/asking \$70/)).toBeTruthy()
   expect(screen.queryByText(/below market/)).toBeNull()
   expect(screen.queryByText(/above market/)).toBeNull()
 })
