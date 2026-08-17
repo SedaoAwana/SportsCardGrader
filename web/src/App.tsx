@@ -25,6 +25,14 @@ function App() {
   const [scanPreviewUrl, setScanPreviewUrl] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
+  // Re-runs the health probe and syncs the banner. Returns the fresh result so
+  // callers (pre-scan gate) can branch without waiting on a state read.
+  async function recheckHealth(): Promise<boolean> {
+    const ok = await checkHealth()
+    setServerDown(!ok)
+    return ok
+  }
+
   useEffect(() => {
     checkHealth().then(ok => {
       if (!ok) setServerDown(true)
@@ -32,6 +40,13 @@ function App() {
     // One-time import of pre-IndexedDB localStorage history; harmless no-op after.
     migrateFromLocalStorage().catch(err =>
       console.warn('History migration failed:', err))
+    // Show wifi drops constantly; when the browser regains a network path,
+    // re-probe instead of leaving a stale "unreachable" banner up.
+    const onOnline = () => {
+      void checkHealth().then(ok => setServerDown(!ok))
+    }
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
   }, [])
 
   async function handleScan(front: File, back: File | null, askingPrice: number | null) {
@@ -40,6 +55,9 @@ function App() {
       setView('settings')
       return
     }
+    // Banner says the server is down: re-probe before burning an upload over a
+    // dead link. If it recovered, the banner clears and the scan proceeds.
+    if (serverDown && !(await recheckHealth())) return
     const controller = new AbortController()
     abortRef.current = controller
     // Combine user cancel with a hard client timeout. AbortSignal.any/timeout
@@ -108,6 +126,7 @@ function App() {
       {serverDown && (
         <div className="banner" role="alert">
           Scan server unreachable
+          <button onClick={() => void recheckHealth()}>Retry</button>
           <button onClick={() => setServerDown(false)}>Dismiss</button>
         </div>
       )}
